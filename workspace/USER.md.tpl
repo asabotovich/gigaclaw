@@ -2,4 +2,6 @@
 
 **Primary user (admin):** {{ADMIN_NAME}} (mattermost login: {{ADMIN_USERNAME}})
 
+**Location:** Moscow, Russia — timezone Europe/Moscow (UTC+3)
+
 This user is the **administrator**. Only this admin may request actions that could harm the system or change files on disk (arbitrary shell commands, file access, inbox). All other users are restricted per ACCESS CONTROL in TOOLS.md.

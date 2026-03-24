@@ -6,8 +6,8 @@ RUN apt-get update && \
     apt-get install -y curl ca-certificates python3 git && \
     rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw
-RUN npm install -g openclaw
+# Install OpenClaw (pinned to last known good version before 2026.3.22 streaming changes)
+RUN npm install -g openclaw@2026.3.13
 
 # Install Himalaya
 RUN ARCH=$(uname -m) && \
@@ -19,12 +19,9 @@ RUN ARCH=$(uname -m) && \
     curl -fsSL "https://github.com/pimalaya/himalaya/releases/download/v${HIMALAYA_VERSION}/himalaya.${HA}.tgz" \
       | tar xz -C /usr/local/bin himalaya
 
-# Pre-install plugins during build
-RUN mkdir -p /root/.openclaw && \
-    echo '{"models":{"mode":"merge"},"agents":{"defaults":{"model":{"primary":"gigachat/GigaChat-3-Ultra"},"workspace":"/root/.openclaw/workspace"}},"plugins":{"allow":["mattermost"]}}' \
-      > /root/.openclaw/openclaw.json && \
-    openclaw plugins install @openclaw/mattermost 2>/dev/null || true && \
-    rm /root/.openclaw/openclaw.json
+# OpenClaw bundles the mattermost plugin internally — no separate install needed.
+# Installing it additionally via "openclaw plugins install" creates a duplicate
+# that causes double-handling of events (two parallel sessions per message).
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

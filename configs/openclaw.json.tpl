@@ -2,33 +2,40 @@
   "models": {
     "mode": "replace",
     "providers": {
+{{#gigachat}}
       "gigachat": {
         "baseUrl": "http://gpt2giga:8090/v1",
         "apiKey": "any",
         "api": "openai-completions",
         "models": [
-          { "id": "GigaChat-3-Ultra", "name": "GigaChat 3 Ultra" },
-          { "id": "GigaChat-2-Max", "name": "GigaChat 2 Max" },
-          { "id": "GigaChat-Pro", "name": "GigaChat Pro" },
-          { "id": "GigaChat", "name": "GigaChat" }
+          { "id": "{{LLM_MODEL}}", "name": "{{LLM_MODEL}}" }
         ]
       }
+{{/gigachat}}
+{{#openrouter}}
+      "openrouter": {
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "apiKey": "{{OPENROUTER_API_KEY}}",
+        "models": [
+          { "id": "{{LLM_MODEL}}", "name": "{{LLM_MODEL}}" }
+        ]
+      }
+{{/openrouter}}
     }
   },
   "agents": {
     "defaults": {
       "model": {
-        "primary": "gigachat/GigaChat-3-Ultra"
+        "primary": "{{LLM_PROVIDER}}/{{LLM_MODEL}}"
       },
       "workspace": "/root/.openclaw/workspace",
+      "userTimezone": "Europe/Moscow",
+      "envelopeTimezone": "Europe/Moscow",
       "compaction": { "mode": "safeguard" },
       "maxConcurrent": 4,
       "subagents": { "maxConcurrent": 8 },
       "models": {
-        "gigachat/GigaChat-3-Ultra": { "alias": "GigaChat 3 Ultra" },
-        "gigachat/GigaChat-2-Max":   { "alias": "GigaChat 2 Max" },
-        "gigachat/GigaChat-Pro":     { "alias": "GigaChat Pro" },
-        "gigachat/GigaChat":         { "alias": "GigaChat" }
+        "{{LLM_PROVIDER}}/{{LLM_MODEL}}": { "alias": "{{LLM_MODEL}}" }
       }
     }
   },
@@ -36,7 +43,7 @@
     "dmScope": "per-channel-peer"
   },
   "tools": {
-    "deny": ["apply_patch", "process"],
+    "deny": [],
     "web": {
       "search": {
         "enabled": true,
@@ -76,7 +83,8 @@
       "dmPolicy": "open",
       "groupPolicy": "open",
       "chatmode": "oncall",
-      "replyToMode": "first"
+      "replyToMode": "first",
+      "blockStreaming": false
     }
   },
   "gateway": {
@@ -84,7 +92,16 @@
     "mode": "local",
     "bind": "lan",
     "auth": { "mode": "password", "password": "{{GATEWAY_PASSWORD}}" },
-    "controlUi": { }
+    "controlUi": {
+      "allowedOrigins": [
+        "http://127.0.0.1:18789",
+        "http://localhost:18789",
+        "http://127.0.0.1",
+        "http://localhost",
+        "{{PUBLIC_ORIGIN}}"
+      ],
+      "dangerouslyDisableDeviceAuth": {{CONTROL_UI_DISABLE_DEVICE_AUTH}}
+    }
   },
   "skills": {
     "entries": {

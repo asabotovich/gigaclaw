@@ -50,8 +50,11 @@ cp .env.example .env
 | `EMAIL_PASSWORD` | Пароль / app-password от почты |
 | `IMAP_HOST` | IMAP-сервер почты |
 | `SMTP_HOST` | SMTP-сервер почты |
-| `ADMIN_USERNAME` | Логины администраторов MM через запятую |
-| `GATEWAY_PASSWORD` | Пароль для доступа к Dashboard (`http://localhost:18789`) |
+| `ADMIN_NAME` | Имя администратора (для `USER.md`) |
+| `ADMIN_USERNAME` | Логин администратора в Mattermost |
+| `GATEWAY_PASSWORD` | Пароль для доступа к Dashboard |
+| `PUBLIC_ORIGIN` | URL дашборда **без слэша в конце** (например `http://46.243.142.210` за nginx). Иначе ошибка `origin not allowed` |
+| `CONTROL_UI_DISABLE_DEVICE_AUTH` | `true` только если дашборд открываешь по **HTTP с публичного IP** (иначе браузер: *device identity / secure context*). В проде лучше **HTTPS** и `false` |
 | `OPENROUTER_API_KEY` | API-ключ OpenRouter для поиска в интернете через Perplexity |
 
 ### 3. Запусти установщик
@@ -108,7 +111,7 @@ docker compose down -v
 
 - Админ‑панель доступна локально по адресу: `http://127.0.0.1:18789/`
 - Тип авторизации: **password**
-- Пароль задаётся в `.env` переменной `GATEWAY_PASSWORD` (например `gigaclaw3000`)
+- Пароль задаётся в `.env` переменной `GATEWAY_PASSWORD` (например `12345`)
 
 Чтобы зайти:
 

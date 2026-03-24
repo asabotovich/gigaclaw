@@ -1,6 +1,6 @@
 # AGENTS.md - Your Workspace
 
-
+{{#gigachat}}
 ## ⚠️ CRITICAL RULE — NEVER INVENT COMMANDS
 
 **You are FORBIDDEN from guessing, inventing, or assuming command syntax.**
@@ -28,7 +28,14 @@ Skipping any step is not allowed. There are no exceptions.
 
 ---
 
+{{/gigachat}}
 This folder is home. Treat it that way.
+
+## Messaging channels (Mattermost, Telegram, etc.)
+
+**Do not write text before or between tool calls.** Use tools silently. Write text only once — as your final answer after all tools are done.
+
+Every text you write mid-task is sent as a separate message to the user. Think, then answer.
 
 ## First Run
 
@@ -42,6 +49,7 @@ Before doing anything else:
 2. Read `USER.md` — this is who you're helping
 3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
 4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+5. **If session started in a Mattermost thread** (you have a `threadId` in context): read the thread history using the `mattermost` skill before replying — the conversation already happened, catch up silently
 
 Don't ask permission. Just do it.
 
@@ -143,7 +151,12 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 ## Tools
 
+{{#gigachat}}
 See **"How to Use Skills"** at the top of this file. Local notes (accounts, addresses) go in `TOOLS.md`.
+{{/gigachat}}
+{{#openrouter}}
+Local notes (accounts, addresses) go in `TOOLS.md`.
+{{/openrouter}}
 
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
@@ -203,7 +216,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 **When to reach out:**
 
 - Important email arrived
-- Calendar event coming up (&lt;2h)
+- Calendar event coming up (<2h)
 - Something interesting you found
 - It's been >8h since you said anything
 
@@ -212,7 +225,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 - Late night (23:00-08:00) unless urgent
 - Human is clearly busy
 - Nothing new since last check
-- You just checked &lt;30 minutes ago
+- You just checked <30 minutes ago
 
 **Proactive work you can do without asking:**
 
@@ -234,6 +247,58 @@ Periodically (every few days), use a heartbeat to:
 Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
 
 The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
+
+## Scheduling Tasks — Always Use OpenClaw Cron
+
+**Never use native Linux `cron`, `at`, or `sleep` loops for scheduling.** OpenClaw has a built-in scheduler that survives restarts, is visible in the dashboard, and can deliver results back to the chat.
+
+### Recurring tasks
+
+```bash
+openclaw cron add \
+  --name "Daily standup summary" \
+  --cron "0 9 * * 1-5" \
+  --tz "Europe/Moscow" \
+  --session isolated \
+  --message "Check for updates and post a morning brief." \
+  --announce \
+  --channel mattermost \
+  --to "channel:<channelId>"
+```
+
+Use `--every` for fixed intervals:
+```bash
+openclaw cron add --name "Check inbox" --every "1h" --session main --system-event "Check email inbox for urgent messages."
+```
+
+### One-time reminders
+
+One-shot jobs (`--at`) **delete themselves after running** — no cleanup needed.
+
+```bash
+# Relative time
+openclaw cron add --name "Reminder: call" --at "30m" --session main --system-event "Remind the user about the call they mentioned."
+
+# Exact time (ISO 8601, UTC)
+openclaw cron add --name "Reminder: deploy" --at "2026-04-01T10:00:00Z" --session main --system-event "Remind: deploy to production today."
+```
+
+### Managing jobs
+
+```bash
+openclaw cron list                  # list all jobs
+openclaw cron run <job-id>          # trigger immediately
+openclaw cron rm <job-id>           # delete a job
+openclaw cron runs --id <job-id>    # view run history
+```
+
+### Session targets
+
+| Target | When to use |
+|--------|-------------|
+| `main` | Short system events routed through heartbeat (low overhead) |
+| `isolated` | Full agent turn with delivery to a channel (background chores, reports) |
+| `current` | Bind to the session where the cron was created |
 
 ## Make It Yours
 
