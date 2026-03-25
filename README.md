@@ -156,6 +156,91 @@ docker compose exec openclaw \
 
 После этого следующий вход вновь потребует pairing.
 
+## Google Workspace (скилл gog)
+
+Бот умеет работать с Gmail, Google Drive, Docs, Sheets, Calendar через скилл `gog`. Скилл встроен в OpenClaw — дополнительно устанавливать ничего не нужно.
+
+### Что нужно сделать один раз
+
+#### 1. Создать OAuth-приложение в Google Cloud Console
+
+1. Открой [console.cloud.google.com](https://console.cloud.google.com) и создай проект
+2. Включи нужные API: Gmail API, Google Drive API, Google Docs API, Google Sheets API, Google Calendar API
+3. Перейди в **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
+4. Тип приложения: **Desktop app**
+5. Скачай JSON — это и есть `client_secret.json`
+6. Перейди в **APIs & Services → OAuth consent screen → Audience**
+7. Добавь нужные email-адреса в **Test users** (или переведи приложение в Production для бессрочного токена)
+
+#### 2. Добавить переменные в `.env`
+
+```bash
+GOG_KEYRING_PASSWORD=придумай-пароль   # ключ шифрования токенов
+GOG_ACCOUNT=you@gmail.com              # Google-аккаунт бота
+```
+
+#### 3. Скопировать `client_secret.json` на сервер
+
+```bash
+# Создаёт install.sh автоматически, но на всякий случай:
+mkdir -p data/gog
+
+scp client_secret.json user@server:/path/to/gigaclaw/data/gog/client_secret.json
+```
+
+#### 4. Задать credentials и авторизоваться
+
+```bash
+# Записать client_secret в credentials.json (внутри контейнера)
+docker compose exec openclaw \
+  gog auth credentials /root/.config/gogcli/client_secret.json
+
+# Шаг 1 — получить ссылку для авторизации
+docker compose exec -T -e GOG_KEYRING_PASSWORD=<пароль> openclaw \
+  gog auth add you@gmail.com --remote --step 1 --services all
+```
+
+Открой выданную ссылку в браузере, войди в Google-аккаунт, разреши доступ.  
+После редиректа браузер попытается открыть `http://127.0.0.1:XXXXX/...` — страница не откроется, **это нормально**.  
+Скопируй полный URL из адресной строки.
+
+```bash
+# Шаг 2 — обменять code на токен (вставь скопированный URL)
+docker compose exec -T -e GOG_KEYRING_PASSWORD=<пароль> openclaw \
+  gog auth add you@gmail.com --remote --step 2 \
+  --services gmail,calendar,chat,classroom,drive,docs,slides,contacts,tasks,sheets,people,forms,appscript \
+  --auth-url 'http://127.0.0.1:XXXXX/oauth2/callback?...'
+```
+
+#### 5. Проверить что всё работает
+
+```bash
+docker compose exec -T openclaw gog drive ls -a you@gmail.com
+```
+
+### Как хранятся токены
+
+```
+data/gog/                          ← bind mount, живёт на диске сервера
+├── client_secret.json             ← ты скопировал вручную
+├── credentials.json               ← создал gog auth credentials
+└── keyring/
+    └── token:you@gmail.com        ← зашифрованный refresh token
+```
+
+Токены шифруются паролем `GOG_KEYRING_PASSWORD`. Папка `data/gog/` переживает любой редеплой — повторная авторизация не нужна.
+
+> **Важно:** не меняй `GOG_KEYRING_PASSWORD` после авторизации — токены станут нечитаемыми, придётся авторизоваться заново.
+
+### Бессрочный токен
+
+По умолчанию OAuth-приложение в режиме **Testing** выдаёт токены на 7 дней.  
+Чтобы получить бессрочный refresh token — переведи приложение в **Production**:
+
+1. [console.cloud.google.com/apis/credentials/consent](https://console.cloud.google.com/apis/credentials/consent)
+2. Нажми **Publish app → Confirm**
+3. Пройди авторизацию заново (`gog auth add ... --force-consent`)
+
 ## Управление
 
 ```bash
