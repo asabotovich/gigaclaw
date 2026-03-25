@@ -16,6 +16,7 @@ services:
       - ./build/himalaya-config.toml:/run/secrets/himalaya_config:ro
     environment:
       - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD:-openclaw}
+      - GOG_ACCOUNT=${GOG_ACCOUNT:-}
 
   gpt2giga:
     profiles: ["gigachat"]
