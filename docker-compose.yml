@@ -12,6 +12,7 @@ services:
       - openclaw_workspace:/root/.openclaw/workspace
       - ./data/agents:/root/.openclaw/agents
       - ./data/cron:/root/.openclaw/cron
+      - ./data/gog:/root/.config/gog
       - ./build/himalaya-config.toml:/run/secrets/himalaya_config:ro
 
   gpt2giga:

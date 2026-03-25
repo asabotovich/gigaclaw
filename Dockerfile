@@ -1,6 +1,7 @@
 FROM node:22-slim
 
 ARG HIMALAYA_VERSION=1.2.0
+ARG GOGCLI_VERSION=0.12.0
 
 RUN apt-get update && \
     apt-get install -y curl ca-certificates python3 git && \
@@ -18,6 +19,16 @@ RUN ARCH=$(uname -m) && \
     esac && \
     curl -fsSL "https://github.com/pimalaya/himalaya/releases/download/v${HIMALAYA_VERSION}/himalaya.${HA}.tgz" \
       | tar xz -C /usr/local/bin himalaya
+
+# Install gog (Google Workspace CLI)
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  GA="linux_amd64" ;; \
+      aarch64) GA="linux_arm64" ;; \
+      *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/steipete/gogcli/releases/download/v${GOGCLI_VERSION}/gogcli_${GOGCLI_VERSION}_${GA}.tar.gz" \
+      | tar xz -C /usr/local/bin gog
 
 # OpenClaw bundles the mattermost plugin internally — no separate install needed.
 # Installing it additionally via "openclaw plugins install" creates a duplicate

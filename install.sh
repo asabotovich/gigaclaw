@@ -158,7 +158,7 @@ else
   DOCKER_COMPOSE_ARGS=""
 fi
 
-mkdir -p "$SCRIPT_DIR/data/agents" "$SCRIPT_DIR/data/cron"
+mkdir -p "$SCRIPT_DIR/data/agents" "$SCRIPT_DIR/data/cron" "$SCRIPT_DIR/data/gog"
 
 # shellcheck disable=SC2086
 docker compose $DOCKER_COMPOSE_ARGS pull

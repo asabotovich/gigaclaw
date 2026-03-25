@@ -105,7 +105,8 @@
   },
   "skills": {
     "entries": {
-      "himalaya": { "enabled": true }
+      "himalaya": { "enabled": true },
+      "gog": { "enabled": true }
     }
   },
   "plugins": {
