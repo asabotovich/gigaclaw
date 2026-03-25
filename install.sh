@@ -190,7 +190,12 @@ if docker compose ps openclaw | grep -q "Up"; then
       [ -f "$skill_dir/SKILL.md" ] || continue
       skill_name=$(basename "$skill_dir")
       docker compose exec openclaw mkdir -p "/root/.openclaw/workspace/skills/$skill_name"
-      docker compose cp "$skill_dir/SKILL.md" "openclaw:/root/.openclaw/workspace/skills/$skill_name/SKILL.md"
+      # Copy all files in the skill directory (not just SKILL.md)
+      for skill_file in "$skill_dir"*; do
+        [ -f "$skill_file" ] || continue
+        fname=$(basename "$skill_file")
+        docker compose cp "$skill_file" "openclaw:/root/.openclaw/workspace/skills/$skill_name/$fname"
+      done
     done
   fi
 fi
