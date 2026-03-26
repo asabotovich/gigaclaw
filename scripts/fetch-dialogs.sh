@@ -85,6 +85,30 @@ for k in matching_keys:
     if isinstance(v, dict) and 'sessionId' in v:
         session_ids[v['sessionId']] = {'context': k, 'updatedAt': v.get('updatedAt', 0)}
 
+# Also scan ALL direct/thread sessions for messages mentioning the user (handles ID-based keys)
+for k, v in sessions_map.items():
+    if not isinstance(v, dict) or 'sessionId' not in v:
+        continue
+    sid = v['sessionId']
+    if sid in session_ids:
+        continue
+    # Only scan direct/group/channel sessions
+    if 'direct' not in k and 'thread' not in k and 'channel' not in k:
+        continue
+    fname = os.path.join(sessions_dir, sid + '.jsonl')
+    if not os.path.exists(fname):
+        matches = glob.glob(os.path.join(sessions_dir, '*' + sid + '*.jsonl'))
+        if not matches:
+            continue
+        fname = matches[0]
+    try:
+        with open(fname) as f:
+            content = f.read(8000)  # Read first 8KB to check sender
+        if ('@' + target_user) in content or ('from @' + target_user) in content:
+            session_ids[sid] = {'context': k, 'updatedAt': v.get('updatedAt', 0)}
+    except:
+        pass
+
 result = {
     'user': target_user,
     'fetched_at': datetime.now(timezone.utc).isoformat(),
