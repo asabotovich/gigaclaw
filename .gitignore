@@ -2,3 +2,4 @@ build/
 data/
 local/
 .env
+docker-compose.override.yml

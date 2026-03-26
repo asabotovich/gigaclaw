@@ -50,14 +50,30 @@ cp -r local.example/ local/
 ```
 local/
   skills/
-    my-private-skill/
-      SKILL.md
-    jira-integration/
-      SKILL.md
+    my-skill/
+      SKILL.md          ← инструкции для агента
+      my-script.py      ← вспомогательные файлы скилла
+      .skill-persist/   ← файлы которые должны пережить редеплой
+        state.json      ← начальное состояние (например {})
 ```
 
-При запуске `./install.sh` каждый скилл из `local/skills/` копируется в
-`workspace/skills/<name>/SKILL.md` внутри контейнера — так же, как обычные скиллы.
+При запуске `./install.sh`:
+- Файлы скилла (кроме `.skill-persist/`) копируются в контейнер и обновляются при каждом редеплое
+- Файлы из `.skill-persist/` копируются в `data/store/<skill>/` **один раз** (если там ещё нет)
+- Автоматически генерируется `docker-compose.override.yml` с bind mount'ами
+
+Итог — агент читает и пишет файл по обычному пути (`~/.openclaw/workspace/skills/my-skill/state.json`),
+а физически он хранится на диске сервера в `data/store/my-skill/state.json` и переживает любой редеплой.
+
+Пример сгенерированного `docker-compose.override.yml` при двух скиллах с `.skill-persist`:
+
+```yaml
+services:
+  openclaw:
+    volumes:
+      - ./data/store/cloudsec/issues.json:/root/.openclaw/workspace/skills/cloudsec/issues.json
+      - ./data/store/my-skill/state.json:/root/.openclaw/workspace/skills/my-skill/state.json
+```
 
 ## Подробнее
 

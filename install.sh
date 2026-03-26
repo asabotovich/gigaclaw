@@ -131,14 +131,10 @@ render_template "$SCRIPT_DIR/workspace/TOOLS.md"               "$SCRIPT_DIR/buil
 render_template "$SCRIPT_DIR/workspace/USER.md.tpl"            "$SCRIPT_DIR/build/USER.md"
 
 # Apply local overrides (local/ is gitignored — safe for private prompts)
-declare -A LOCAL_TARGETS=(
-  [agents]="$SCRIPT_DIR/build/AGENTS.md"
-  [tools]="$SCRIPT_DIR/build/TOOLS.md"
-  [user]="$SCRIPT_DIR/build/USER.md"
-)
-for key in "${!LOCAL_TARGETS[@]}"; do
+for pair in "agents:$SCRIPT_DIR/build/AGENTS.md" "tools:$SCRIPT_DIR/build/TOOLS.md" "user:$SCRIPT_DIR/build/USER.md"; do
+  key="${pair%%:*}"
+  dst="${pair#*:}"
   src="$SCRIPT_DIR/local/${key}.append.md"
-  dst="${LOCAL_TARGETS[$key]}"
   if [ -f "$src" ]; then
     echo "    [local] appending ${key}.append.md"
     printf '\n' >> "$dst"
@@ -159,6 +155,52 @@ else
 fi
 
 mkdir -p "$SCRIPT_DIR/data/agents" "$SCRIPT_DIR/data/cron" "$SCRIPT_DIR/data/gog"
+
+# --- Generate docker-compose.override.yml for .skill-persist mounts ---
+# Skills can place files in .skill-persist/ to survive redeploys.
+# Each file is seeded to data/store/<skill>/ once and mounted individually into the container.
+generate_skill_persist_overrides() {
+  local override_file="$SCRIPT_DIR/docker-compose.override.yml"
+  local volumes=()
+
+  for skill_dir in "$SCRIPT_DIR/workspace/skills"/*/ "$SCRIPT_DIR/local/skills"/*/; do
+    local persist_dir="$skill_dir/.skill-persist"
+    [ -d "$persist_dir" ] || continue
+    local skill_name
+    skill_name=$(basename "$skill_dir")
+    mkdir -p "$SCRIPT_DIR/data/store/$skill_name"
+
+    for persist_file in "$persist_dir"/*; do
+      [ -e "$persist_file" ] || continue
+      local fname
+      fname=$(basename "$persist_file")
+      local store_path="$SCRIPT_DIR/data/store/$skill_name/$fname"
+
+      # Seed from .skill-persist only if not yet on disk (preserve live state)
+      if [ ! -e "$store_path" ]; then
+        cp -r "$persist_file" "$store_path"
+      fi
+
+      volumes+=("      - ./data/store/$skill_name/$fname:/root/.openclaw/workspace/skills/$skill_name/$fname")
+    done
+  done
+
+  if [ ${#volumes[@]} -eq 0 ]; then
+    rm -f "$override_file"
+    return
+  fi
+
+  {
+    echo "services:"
+    echo "  openclaw:"
+    echo "    volumes:"
+    for v in "${volumes[@]}"; do echo "$v"; done
+  } > "$override_file"
+
+  echo "==> Generated docker-compose.override.yml (skill-persist mounts: ${#volumes[@]})"
+}
+
+generate_skill_persist_overrides
 
 # shellcheck disable=SC2086
 docker compose $DOCKER_COMPOSE_ARGS pull
@@ -190,7 +232,7 @@ if docker compose ps openclaw | grep -q "Up"; then
       [ -f "$skill_dir/SKILL.md" ] || continue
       skill_name=$(basename "$skill_dir")
       docker compose exec openclaw mkdir -p "/root/.openclaw/workspace/skills/$skill_name"
-      # Copy all files in the skill directory (not just SKILL.md)
+      # Copy all files except .skill-persist (those are mounted via docker-compose.override.yml)
       for skill_file in "$skill_dir"*; do
         [ -f "$skill_file" ] || continue
         fname=$(basename "$skill_file")
