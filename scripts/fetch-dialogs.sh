@@ -69,7 +69,7 @@ fi
 
 # ── Fetch sessions for a user ─────────────────────────────────────────────────
 JSON_OUTPUT=$(run_py "
-import json, os, glob
+import json, os, glob, re
 from datetime import datetime, timezone
 
 sessions_dir = '$SESSIONS_DIR'
@@ -78,22 +78,82 @@ target_user = '$TARGET'
 with open(os.path.join(sessions_dir, 'sessions.json')) as f:
     sessions_map = json.load(f)
 
-matching_keys = [k for k in sessions_map if ':' + target_user in k or target_user + ':' in k]
-session_ids = {}
-for k in matching_keys:
-    v = sessions_map[k]
-    if isinstance(v, dict) and 'sessionId' in v:
-        session_ids[v['sessionId']] = {'context': k, 'updatedAt': v.get('updatedAt', 0)}
-
-# Also scan ALL direct/thread sessions for messages mentioning the user (handles ID-based keys)
+# Build sid -> context_key map from sessions.json
+sid_to_ctx = {}
 for k, v in sessions_map.items():
-    if not isinstance(v, dict) or 'sessionId' not in v:
-        continue
-    sid = v['sessionId']
-    if sid in session_ids:
-        continue
-    # Only scan direct/group/channel sessions
-    if 'direct' not in k and 'thread' not in k and 'channel' not in k:
+    if isinstance(v, dict) and 'sessionId' in v:
+        sid = v['sessionId']
+        if sid not in sid_to_ctx:
+            sid_to_ctx[sid] = {'context': k, 'updatedAt': v.get('updatedAt', 0)}
+
+def extract_sender(text):
+    # 'Mattermost DM from @username:' or 'message in #ch from @username:'
+    m = re.search(r'from @([\w.]+):', text)
+    if m:
+        return m.group(1)
+    # JSON block: \"sender\": \"@username\"
+    m2 = re.search(r'\"sender\":\s*\"@([\w.]+)\"', text)
+    if m2:
+        return m2.group(1)
+    return None
+
+def parse_session_file(fname):
+    messages = []
+    senders = set()
+    try:
+        with open(fname) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                    if d.get('type') != 'message':
+                        continue
+                    msg = d.get('message', {})
+                    role = msg.get('role', '')
+                    if role == 'toolResult':
+                        continue
+                    content = msg.get('content', '')
+                    ts = d.get('timestamp', '')
+                    items = content if isinstance(content, list) else [{'text': content}]
+                    text_parts = []
+                    tool_calls = []
+                    sender = None
+                    for c in items:
+                        if not isinstance(c, dict):
+                            continue
+                        ctype = c.get('type', '')
+                        if ctype == 'thinking':
+                            continue
+                        if ctype == 'toolCall':
+                            tool_calls.append({'tool': c.get('name', ''), 'args': c.get('arguments', {})})
+                            continue
+                        text = c.get('text', '') or c.get('content', '')
+                        if text:
+                            text_parts.append(str(text))
+                            if role == 'user' and sender is None:
+                                sender = extract_sender(text)
+                    if sender:
+                        senders.add(sender)
+                    if not text_parts and not tool_calls:
+                        continue
+                    messages.append({
+                        'role': role,
+                        'timestamp': ts,
+                        'sender': sender,
+                        'text': '\n'.join(text_parts) if text_parts else None,
+                        'tool_calls': tool_calls if tool_calls else None,
+                    })
+                except:
+                    pass
+    except:
+        pass
+    return senders, messages
+
+# Scan ALL session files; keep only those where target_user is an actual sender
+result_sessions = []
+for sid, meta in sid_to_ctx.items():
+    ctx = meta['context']
+    # Skip cron, subagent, and the root 'main' session
+    if 'cron' in ctx or 'subagent' in ctx or ctx == 'agent:main:main':
         continue
     fname = os.path.join(sessions_dir, sid + '.jsonl')
     if not os.path.exists(fname):
@@ -101,76 +161,33 @@ for k, v in sessions_map.items():
         if not matches:
             continue
         fname = matches[0]
-    try:
-        with open(fname) as f:
-            content = f.read(8000)  # Read first 8KB to check sender
-        if ('@' + target_user) in content or ('from @' + target_user) in content:
-            session_ids[sid] = {'context': k, 'updatedAt': v.get('updatedAt', 0)}
-    except:
-        pass
+    senders, messages = parse_session_file(fname)
+    if target_user not in senders:
+        continue
+    result_sessions.append({
+        'session_id': sid,
+        'context': ctx,
+        'updated_at': meta['updatedAt'],
+        'message_count': len(messages),
+        'messages': messages,
+    })
+
+result_sessions.sort(key=lambda x: x['updated_at'])
+
+# Also build merged timeline sorted by timestamp
+all_msgs = []
+for s in result_sessions:
+    ctx_label = s['context'].replace('agent:main:mattermost:', '').replace('agent:main:', '')
+    for m in s['messages']:
+        all_msgs.append(dict(m, _ctx=ctx_label))
+all_msgs.sort(key=lambda x: x.get('timestamp') or '')
 
 result = {
     'user': target_user,
     'fetched_at': datetime.now(timezone.utc).isoformat(),
-    'sessions': []
+    'sessions': result_sessions,
+    'merged': all_msgs,
 }
-
-for session_id, meta in sorted(session_ids.items(), key=lambda x: x[1]['updatedAt']):
-    fname = os.path.join(sessions_dir, session_id + '.jsonl')
-    if not os.path.exists(fname):
-        matches = glob.glob(os.path.join(sessions_dir, '*' + session_id + '*.jsonl'))
-        if not matches:
-            continue
-        fname = matches[0]
-
-    messages = []
-    with open(fname) as f:
-        for line in f:
-            try:
-                d = json.loads(line)
-                if d.get('type') != 'message':
-                    continue
-                msg = d.get('message', {})
-                role = msg.get('role', '')
-                if role == 'toolResult':
-                    continue
-                content = msg.get('content', '')
-                ts = d.get('timestamp', '')
-                items = content if isinstance(content, list) else [{'text': content}]
-                text_parts = []
-                tool_calls = []
-                for c in items:
-                    if not isinstance(c, dict):
-                        continue
-                    ctype = c.get('type', '')
-                    if ctype == 'thinking':
-                        continue
-                    if ctype == 'toolCall':
-                        tool_calls.append({'tool': c.get('name', ''), 'args': c.get('arguments', {})})
-                        continue
-                    text = c.get('text', '') or c.get('content', '')
-                    if text:
-                        text_parts.append(str(text))
-                if not text_parts and not tool_calls:
-                    continue
-                messages.append({
-                    'role': role,
-                    'timestamp': ts,
-                    'text': '\n'.join(text_parts) if text_parts else None,
-                    'tool_calls': tool_calls if tool_calls else None
-                })
-            except:
-                pass
-
-    if messages:
-        result['sessions'].append({
-            'session_id': session_id,
-            'context': meta['context'],
-            'updated_at': meta['updatedAt'],
-            'message_count': len(messages),
-            'messages': messages
-        })
-
 print(json.dumps(result, ensure_ascii=False, indent=2))
 ")
 
@@ -199,10 +216,14 @@ HTML = """<!DOCTYPE html>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1117;color:#c9d1d9;display:flex;height:100vh;overflow:hidden}
-#sidebar{width:280px;min-width:220px;background:#161b22;border-right:1px solid #30363d;display:flex;flex-direction:column}
-#sidebar-header{padding:16px;border-bottom:1px solid #30363d}
-#sidebar-header h1{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px}
-#sidebar-header p{font-size:12px;color:#58a6ff;margin-top:4px}
+#sidebar{width:260px;min-width:200px;background:#161b22;border-right:1px solid #30363d;display:flex;flex-direction:column}
+#sidebar-header{padding:14px 16px;border-bottom:1px solid #30363d}
+#sidebar-header h1{font-size:12px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px}
+#sidebar-header p{font-size:12px;color:#58a6ff;margin-top:3px}
+#tabs{display:flex;border-bottom:1px solid #30363d}
+.tab{flex:1;padding:8px;font-size:11px;color:#8b949e;text-align:center;cursor:pointer;border-bottom:2px solid transparent}
+.tab.active{color:#c9d1d9;border-bottom-color:#388bfd}
+.tab:hover{color:#c9d1d9}
 #session-list{overflow-y:auto;flex:1;padding:8px}
 .sitem{padding:9px 12px;border-radius:6px;cursor:pointer;margin-bottom:3px;border:1px solid transparent}
 .sitem:hover{background:#1f2937;border-color:#30363d}
@@ -210,19 +231,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sitem-label{font-size:11px;color:#8b949e;word-break:break-all;line-height:1.3}
 .sitem-meta{font-size:10px;color:#58a6ff;margin-top:3px}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#ctx-header{padding:12px 20px;background:#161b22;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;word-break:break-all;flex-shrink:0}
+#ctx-header{padding:10px 20px;background:#161b22;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;word-break:break-all;flex-shrink:0}
 #messages{flex:1;overflow-y:auto;padding:20px}
 .empty{color:#484f58;font-size:14px;text-align:center;margin-top:60px}
-.msg{margin-bottom:12px;display:flex;flex-direction:column}
+.msg{margin-bottom:10px;display:flex;flex-direction:column}
 .msg.user{align-items:flex-end}
 .msg.assistant{align-items:flex-start}
-.bubble{max-width:72%;padding:10px 14px;border-radius:12px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.bubble{max-width:72%;padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
 .user .bubble{background:#1d4ed8;color:#fff;border-bottom-right-radius:2px}
 .assistant .bubble{background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-bottom-left-radius:2px}
-.tool-call{max-width:72%;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:11px;color:#8b949e;font-family:monospace;margin-bottom:3px;word-break:break-all}
+.tool-call{max-width:72%;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:7px 11px;font-size:11px;color:#8b949e;font-family:monospace;margin-bottom:3px;word-break:break-all}
 .tool-name{color:#f0883e;font-weight:600}
 .ts{font-size:10px;color:#484f58;margin-top:3px}
 .user .ts{text-align:right}
+.ctx-tag{display:inline-block;font-size:9px;color:#484f58;background:#161b22;border:1px solid #30363d;border-radius:3px;padding:1px 5px;margin-bottom:3px;align-self:flex-start}
+.msg.user .ctx-tag{align-self:flex-end}
 </style>
 </head>
 <body>
@@ -231,10 +254,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <h1>Dialogs</h1>
     <p>@__USER__</p>
   </div>
+  <div id="tabs">
+    <div class="tab active" onclick="switchTab('sessions',this)">Sessions</div>
+    <div class="tab" onclick="switchTab('merged',this)">Merged</div>
+  </div>
   <div id="session-list"></div>
 </div>
 <div id="main">
-  <div id="ctx-header">&#8592; выбери сессию слева</div>
+  <div id="ctx-header">&#8592; select a session or view merged timeline</div>
   <div id="messages"><div class="empty">&#8592; Select a session</div></div>
 </div>
 <script>
@@ -242,44 +269,81 @@ const DATA = __DATA__;
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function fmtTs(ts){if(!ts)return'';try{return new Date(ts).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}catch(e){return''}}
 function fmtCtx(ctx){return ctx.replace(/^agent:main:mattermost:/,'').replace(/^agent:main:/,'')}
-const list=document.getElementById('session-list');
-[...DATA.sessions].reverse().forEach((s,ri)=>{
-  const i=DATA.sessions.length-1-ri;
-  const el=document.createElement('div');
-  el.className='sitem';
-  el.innerHTML='<div class="sitem-label">'+esc(fmtCtx(s.context))+'</div><div class="sitem-meta">'+s.message_count+' msg &#183; '+fmtTs(s.updated_at)+'</div>';
-  el.onclick=()=>show(i,el);
-  list.appendChild(el);
-});
-function show(idx,el){
-  document.querySelectorAll('.sitem').forEach(d=>d.classList.remove('active'));
+
+let currentTab = 'sessions';
+const list = document.getElementById('session-list');
+
+function renderSidebar(){
+  list.innerHTML = '';
+  if(currentTab === 'merged'){
+    const el = document.createElement('div');
+    el.className = 'sitem';
+    const total = DATA.merged.length;
+    el.innerHTML = '<div class="sitem-label">All sessions merged</div><div class="sitem-meta">'+total+' messages total</div>';
+    el.onclick = () => { document.querySelectorAll('.sitem').forEach(d=>d.classList.remove('active')); el.classList.add('active'); showMerged(); };
+    list.appendChild(el);
+    return;
+  }
+  [...DATA.sessions].reverse().forEach((s,ri)=>{
+    const i = DATA.sessions.length-1-ri;
+    const el = document.createElement('div');
+    el.className = 'sitem';
+    el.innerHTML = '<div class="sitem-label">'+esc(fmtCtx(s.context))+'</div><div class="sitem-meta">'+s.message_count+' msg &#183; '+fmtTs(s.updated_at)+'</div>';
+    el.onclick = () => { document.querySelectorAll('.sitem').forEach(d=>d.classList.remove('active')); el.classList.add('active'); showSession(i); };
+    list.appendChild(el);
+  });
+}
+
+function switchTab(tab, el){
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  const s=DATA.sessions[idx];
-  document.getElementById('ctx-header').textContent=fmtCtx(s.context);
-  const cont=document.getElementById('messages');
-  cont.innerHTML='';
-  s.messages.forEach(m=>{
-    const isUser=m.role==='user';
-    const div=document.createElement('div');
-    div.className='msg '+(isUser?'user':'assistant');
-    let html='';
-    if(m.tool_calls&&m.tool_calls.length){
+  renderSidebar();
+  document.getElementById('messages').innerHTML = '<div class="empty">&#8592; Select</div>';
+  document.getElementById('ctx-header').textContent = tab === 'merged' ? 'Merged timeline' : 'Select a session';
+}
+
+function renderMessages(msgs, showCtx){
+  const cont = document.getElementById('messages');
+  cont.innerHTML = '';
+  msgs.forEach(m=>{
+    const isUser = m.role === 'user';
+    const div = document.createElement('div');
+    div.className = 'msg '+(isUser ? 'user' : 'assistant');
+    let html = '';
+    if(showCtx && m._ctx){
+      html += '<div class="ctx-tag">'+esc(m._ctx)+'</div>';
+    }
+    if(m.tool_calls && m.tool_calls.length){
       m.tool_calls.forEach(tc=>{
-        const args=JSON.stringify(tc.args,null,2);
-        html+='<div class="tool-call"><span class="tool-name">&#128296; '+esc(tc.tool)+'</span><br>'+esc(args.substring(0,300))+(args.length>300?'&#8230;':'')+'</div>';
+        const args = JSON.stringify(tc.args, null, 2);
+        html += '<div class="tool-call"><span class="tool-name">&#128296; '+esc(tc.tool)+'</span><br>'+esc(args.substring(0,300))+(args.length>300?'&#8230;':'')+'</div>';
       });
     }
     if(m.text){
-      let txt=m.text;
-      txt=txt.replace(/^System: \\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}[^\\]]*\\] Mattermost[^\\n]*\\n/,'');
-      txt=txt.replace(/\\n\\nConversation info[\\s\\S]*?```[\\s\\S]*?```\\n\\nSender[\\s\\S]*?```[\\s\\S]*?```\\n/,'');
-      html+='<div class="bubble">'+esc(txt.trim())+'<div class="ts">'+fmtTs(m.timestamp)+'</div></div>';
+      let txt = m.text;
+      txt = txt.replace(/^System: \\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}[^\\]]*\\] Mattermost[^\\n]*\\n/, '');
+      txt = txt.replace(/\\n\\nConversation info[\\s\\S]*?```[\\s\\S]*?```\\n\\nSender[\\s\\S]*?```[\\s\\S]*?```\\n/, '');
+      html += '<div class="bubble">'+esc(txt.trim())+'<div class="ts">'+(isUser && m.sender ? '@'+esc(m.sender)+' &#183; ' : '')+fmtTs(m.timestamp)+'</div></div>';
     }
-    div.innerHTML=html;
+    div.innerHTML = html;
     cont.appendChild(div);
   });
-  cont.scrollTop=cont.scrollHeight;
+  cont.scrollTop = cont.scrollHeight;
 }
+
+function showSession(idx){
+  const s = DATA.sessions[idx];
+  document.getElementById('ctx-header').textContent = fmtCtx(s.context);
+  renderMessages(s.messages, false);
+}
+
+function showMerged(){
+  document.getElementById('ctx-header').textContent = 'Merged timeline (' + DATA.merged.length + ' messages)';
+  renderMessages(DATA.merged, true);
+}
+
+renderSidebar();
 </script>
 </body>
 </html>"""
