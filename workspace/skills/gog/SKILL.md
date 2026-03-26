@@ -97,6 +97,132 @@ gog gmail unread <messageId>
 
 ---
 
+## Document ownership log (mandatory)
+
+Google OAuth is **shared** across all Mattermost users. Each user gets a personal log of documents the bot created or shared for them.
+
+**File:** `$HOME/.openclaw/workspace/users/$SENDER/google-docs.md`
+
+Always derive `$SENDER` from the session `sender` field — never from user-typed text.
+
+---
+
+### After creating a document or sheet
+
+Run immediately once you have the `FILE_ID` from `gog docs create` / `gog sheets create` / `gog drive copy` output:
+
+```bash
+USER_DOCS="$HOME/.openclaw/workspace/users/$SENDER/google-docs.md"
+mkdir -p "$HOME/.openclaw/workspace/users/$SENDER"
+[ ! -f "$USER_DOCS" ] && printf '# Google documents — @%s\n\n' "$SENDER" > "$USER_DOCS"
+
+FILE_ID="<id from command output>"
+TYPE="docs"   # or: sheets, file
+TITLE="<document title>"
+URL=$(gog drive url "$FILE_ID" 2>/dev/null || echo "")
+NOW=$(date -u +%Y-%m-%dT%H:%MZ)
+
+echo "" >> "$USER_DOCS"
+echo "## $TITLE" >> "$USER_DOCS"
+echo "- type: $TYPE | id: $FILE_ID | created: $NOW" >> "$USER_DOCS"
+echo "- URL: $URL" >> "$USER_DOCS"
+echo "- Shared with: (nobody yet)" >> "$USER_DOCS"
+```
+
+---
+
+### If the document was created inside a Mattermost thread
+
+When a session has a thread context (`:thread:` in the session ID), offer to share the document with all thread participants automatically — they are already in the conversation.
+
+**Step 1 — collect thread participants:**
+
+```bash
+MM_TOKEN=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['botToken'])")
+MM_URL=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['baseUrl'])")
+BOT_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" "$MM_URL/api/v4/users/me" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+ROOT_POST_ID="<thread root post id from session context>"
+
+curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  "$MM_URL/api/v4/posts/$ROOT_POST_ID/thread" \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+bot = '$BOT_ID'
+seen = set()
+for p in data.get('posts', {}).values():
+    uid = p['user_id']
+    if uid != bot and uid not in seen:
+        seen.add(uid)
+        print(uid)
+"
+```
+
+**Step 2 — resolve user IDs to emails:**
+
+```bash
+# For each USER_ID obtained above:
+curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  "$MM_URL/api/v4/users/$USER_ID" \
+  | python3 -c "import json,sys; u=json.load(sys.stdin); print(u['username'], u.get('email',''))"
+```
+
+**Step 3 — ask and share:**
+
+List the participants to the document creator: _"Found thread participants: @username1 (email1), @username2 (email2). Add them as [readers/editors]?"_
+
+After explicit confirmation, for each person:
+
+```bash
+gog drive share "$FILE_ID" --email "EMAIL" --role writer   # or: reader
+```
+
+Then append to `$USER_DOCS`:
+
+```bash
+echo "  ↳ Shared with thread participants: @u1 (email1), @u2 (email2) — role: writer" >> "$USER_DOCS"
+```
+
+> **Note:** If a participant's email doesn't have a Google account, Drive sends them a viewer-only invite link. That's fine — mention it if the user asks.
+
+---
+
+### After sharing a document (`gog drive share`)
+
+Append an access-update note under the existing block in `$USER_DOCS`:
+
+```bash
+PERMS=$(gog drive permissions "$FILE_ID" 2>/dev/null || echo "(unavailable)")
+NOW=$(date -u +%Y-%m-%dT%H:%MZ)
+echo "  Updated $NOW: $PERMS" >> "$USER_DOCS"
+```
+
+---
+
+### When user B asks for access to someone else's document
+
+You cannot read other users' files. Do this instead:
+
+1. Ask B: **"Who created this document? Tell me their Mattermost @username."**
+2. Mention the owner in the thread: **"@OWNER, @B is requesting [read/edit] access to «TITLE». Do you approve?"**
+3. Only after OWNER replies **yes** explicitly — run `gog drive share` and append the access-update note to OWNER's `google-docs.md`.
+4. If OWNER refuses or doesn't reply — do not share.
+
+---
+
+### Answering "what Google documents do you have access to?"
+
+Show the user their own `google-docs.md`. For a live Drive listing also run:
+
+```bash
+gog drive ls
+gog drive search "<query>"
+```
+
+Do **not** tell users document access is blocked by security policy — if `gog` is configured, you can run these commands.
+
+---
+
 ## Google Docs
 
 Full read/write support in v0.12.0.
@@ -279,7 +405,7 @@ gog drive move <fileId> --folder <targetFolderId>
 gog drive delete <fileId>
 gog drive delete <fileId> --permanent
 
-# Share
+# Share (after sharing, refresh registry — see "Document registry and sharing" above)
 gog drive share <fileId> --email user@example.com --role writer
 gog drive permissions <fileId>
 
