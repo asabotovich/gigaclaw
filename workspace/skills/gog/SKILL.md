@@ -137,10 +137,17 @@ gog docs edit <docId> "find this" "replace with this"
 # Regex replace (sed-style)
 gog docs sed <docId> 's/pattern/replacement/g'
 
-# Insert text at specific position (index)
+# Insert text at specific position (character index, NOT paragraph number!)
+# IMPORTANT: --index is a CHARACTER position in the document, not a paragraph/line number.
+# Wrong: --index 3 means "after character #3", which will split a word.
+# Right workflow:
+#   1. Use `gog docs structure` to see paragraphs with their character ranges
+#   2. Find the index at the START of the target paragraph from structure output
+#   3. Use that index in --insert
+# Alternative: prefer `gog docs find-replace` or `gog docs write` — they don't need raw indices.
 gog docs insert <docId> "text to insert" --index 42
 
-# Delete text range
+# Delete text range (also character positions, use structure to find correct range)
 gog docs delete --start 10 --end 50 <docId>
 
 # List tabs
@@ -337,3 +344,10 @@ gog contacts list --max 20 --json
 - Always confirm before sending emails or creating calendar events.
 - `gog gmail search` returns threads; use `gog gmail messages search` for individual emails.
 - Drive file IDs can be extracted from Google URLs: `https://docs.google.com/document/d/<docId>/edit`.
+
+## Docs editing strategy (preferred order)
+
+1. **`find-replace`** — best for targeted edits when you know the exact text to change.
+2. **`sed`** — best for regex-based replacements.
+3. **`write --file`** — best when replacing the whole document (read with `cat`, edit locally, write back).
+4. **`insert` / `delete`** — use only when you need precise positional control; always run `gog docs structure <docId>` first to find correct character indices. Never guess the index.
