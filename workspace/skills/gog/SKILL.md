@@ -1,6 +1,6 @@
 ---
 name: gog
-description: Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, Docs, Tasks, Slides, Forms and more.
+description: Google Workspace CLI for Calendar, Drive, Contacts, Sheets, Docs, Tasks. Use himalaya skill for sending/reading email — do NOT use gog gmail for that.
 homepage: https://gogcli.sh
 metadata:
   {
@@ -39,7 +39,14 @@ Set `GOG_ACCOUNT=you@gmail.com` to avoid repeating `--account` on every command.
 
 ---
 
-## Gmail
+## Gmail — DO NOT USE
+
+> **Use the `himalaya` skill for all email operations (send, read, reply, search).**
+> The Gmail commands below exist in gog but must NOT be used — himalaya is the designated email tool.
+> Only use `gog gmail` if explicitly instructed and himalaya is unavailable.
+
+<details>
+<summary>Gmail commands (reference only, prefer himalaya)</summary>
 
 ```bash
 # Search threads (one row per thread)
@@ -86,11 +93,7 @@ gog gmail mark-read <messageId>
 gog gmail unread <messageId>
 ```
 
-**Email formatting notes:**
-- Prefer plain text. Use `--body-file` or `--body-file -` (stdin) for multi-paragraph messages.
-- `--body` does not unescape `\n` — use heredoc for newlines.
-- HTML: `<p>`, `<br>`, `<strong>`, `<em>`, `<a href="...">`, `<ul>/<li>`.
-- Always confirm before sending.
+</details>
 
 ---
 
