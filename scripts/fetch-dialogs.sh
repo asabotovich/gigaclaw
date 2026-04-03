@@ -6,9 +6,9 @@
 #   ./scripts/fetch-dialogs.sh <mm_username> --html    # opens browser viewer
 #   ./scripts/fetch-dialogs.sh --list                  # list all known users/channels
 #
-# Env vars (override defaults):
-#   SSH_KEY   — path to SSH key (e.g. export SSH_KEY=~/.ssh/id_rsa)
-#   SSH_HOST  — user@host       (e.g. export SSH_HOST=user@hostname)
+# Env vars (required):
+#   SSH_KEY   — path to SSH key, e.g. export SSH_KEY=~/.ssh/id_rsa
+#   SSH_HOST  — user@host,      e.g. export SSH_HOST=user@hostname
 #   CONTAINER — container name  (default: openclaw)
 
 set -euo pipefail
