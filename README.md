@@ -53,7 +53,7 @@ cp .env.example .env.asabotovich
 | `LLM_MODEL` | Модель OpenRouter (например `z-ai/glm-4.7`) |
 | `ADMIN_NAME` | Имя владельца (для `USER.md`) |
 | `ADMIN_USERNAME` | Mattermost login владельца (используется в allowlist) |
-| `GATEWAY_PASSWORD` | Пароль доступа к Dashboard `:18789` |
+| `OPENCLAW_GATEWAY_TOKEN` | Токен доступа к Dashboard (`openssl rand -hex 32`) |
 | `PUBLIC_ORIGIN` | URL дашборда без слэша (например `http://46.243.142.210`) |
 | `CONTROL_UI_DISABLE_DEVICE_AUTH` | `true` только если дашборд по HTTP с публичного IP |
 | `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `IMAP_HOST`, `SMTP_HOST` | himalaya (email) |
@@ -115,14 +115,16 @@ npx clawfarm remove asabotovich
 
 ## Dashboard (опционально)
 
-Каждый контейнер открывает OpenClaw Dashboard на своём host-порту (его выводит `clawfarm list`).
+Каждый контейнер открывает OpenClaw Control UI на своём host-порту (посмотреть — `clawfarm list`).
 
-- Auth: password из `GATEWAY_PASSWORD` в `.env`
-- При первом подключении браузера может потребоваться pairing. Approve:
-  ```bash
-  docker exec -it gigaclaw-asabotovich openclaw devices list
-  docker exec -it gigaclaw-asabotovich openclaw devices approve <UUID>
-  ```
+**Auth: только токен.** Значение `OPENCLAW_GATEWAY_TOKEN` из `.env` вставить в поле `Gateway Token` в браузере — запомнится на сессию браузера.
+
+Можно сразу открыть URL с токеном в query (тогда вводить ничего не надо и можно забукмаркать):
+```
+http://127.0.0.1:<port>/?token=<OPENCLAW_GATEWAY_TOKEN>
+```
+
+**Device pairing:** локальный `127.0.0.1` авто-approved. Для HTTP с публичного IP браузер может ругаться на «non-secure context» — временно включить `CONTROL_UI_DISABLE_DEVICE_AUTH=true` либо развернуть HTTPS через nginx.
 
 ## Google Workspace (скилл gog)
 
