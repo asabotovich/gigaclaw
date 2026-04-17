@@ -2,31 +2,19 @@
   "models": {
     "mode": "replace",
     "providers": {
-{{#gigachat}}
-      "gigachat": {
-        "baseUrl": "http://gpt2giga:8090/v1",
-        "apiKey": "any",
-        "api": "openai-completions",
-        "models": [
-          { "id": "{{LLM_MODEL}}", "name": "{{LLM_MODEL}}" }
-        ]
-      }
-{{/gigachat}}
-{{#openrouter}}
       "openrouter": {
         "baseUrl": "https://openrouter.ai/api/v1",
-        "apiKey": "{{OPENROUTER_API_KEY}}",
+        "apiKey": "${OPENROUTER_API_KEY}",
         "models": [
-          { "id": "{{LLM_MODEL}}", "name": "{{LLM_MODEL}}" }
+          { "id": "${LLM_MODEL}", "name": "${LLM_MODEL}" }
         ]
       }
-{{/openrouter}}
     }
   },
   "agents": {
     "defaults": {
       "model": {
-        "primary": "{{LLM_PROVIDER}}/{{LLM_MODEL}}"
+        "primary": "openrouter/${LLM_MODEL}"
       },
       "workspace": "/root/.openclaw/workspace",
       "userTimezone": "Europe/Moscow",
@@ -35,7 +23,7 @@
       "maxConcurrent": 4,
       "subagents": { "maxConcurrent": 8 },
       "models": {
-        "{{LLM_PROVIDER}}/{{LLM_MODEL}}": { "alias": "{{LLM_MODEL}}" }
+        "openrouter/${LLM_MODEL}": { "alias": "${LLM_MODEL}" }
       }
     }
   },
@@ -49,7 +37,7 @@
         "enabled": true,
         "provider": "perplexity",
         "perplexity": {
-          "apiKey": "{{OPENROUTER_API_KEY}}",
+          "apiKey": "${OPENROUTER_API_KEY}",
           "baseUrl": "https://openrouter.ai/api/v1",
           "model": "perplexity/sonar-pro"
         }
@@ -78,10 +66,13 @@
   "channels": {
     "mattermost": {
       "enabled": true,
-      "botToken": "{{MM_BOT_TOKEN}}",
-      "baseUrl": "{{MM_BASE_URL}}",
-      "dmPolicy": "open",
-      "groupPolicy": "open",
+      "botToken": "${MM_BOT_TOKEN}",
+      "baseUrl": "${MM_BASE_URL}",
+      "dmPolicy": "allowlist",
+      "allowFrom": ["${ADMIN_USERNAME}"],
+      "groupPolicy": "allowlist",
+      "groupAllowFrom": ["${ADMIN_USERNAME}"],
+      "dangerouslyAllowNameMatching": true,
       "chatmode": "oncall",
       "replyToMode": "first",
       "blockStreaming": false
@@ -91,16 +82,16 @@
     "port": 18789,
     "mode": "local",
     "bind": "lan",
-    "auth": { "mode": "password", "password": "{{GATEWAY_PASSWORD}}" },
+    "auth": { "mode": "password", "password": "${GATEWAY_PASSWORD}" },
     "controlUi": {
       "allowedOrigins": [
         "http://127.0.0.1:18789",
         "http://localhost:18789",
         "http://127.0.0.1",
         "http://localhost",
-        "{{PUBLIC_ORIGIN}}"
+        "${PUBLIC_ORIGIN}"
       ],
-      "dangerouslyDisableDeviceAuth": {{CONTROL_UI_DISABLE_DEVICE_AUTH}}
+      "dangerouslyDisableDeviceAuth": ${CONTROL_UI_DISABLE_DEVICE_AUTH}
     }
   },
   "skills": {

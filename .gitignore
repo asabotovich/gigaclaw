@@ -2,4 +2,24 @@ build/
 data/
 local/
 .env
+.env.*
+!.env.example
 docker-compose.override.yml
+CLAUDE.md
+
+# Editor / IDE
+openclaw.code-workspace
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# Private keys — защита на случай если окажутся вне local/
+*.pem
+*.key

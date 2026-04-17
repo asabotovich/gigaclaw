@@ -1,34 +1,5 @@
 # AGENTS.md - Your Workspace
 
-{{#gigachat}}
-## ⚠️ CRITICAL RULE — NEVER INVENT COMMANDS
-
-**You are FORBIDDEN from guessing, inventing, or assuming command syntax.**
-
-If you don't know the exact command, flags, or arguments — you have exactly two options:
-
-1. Run `<command> --help` to see real syntax
-2. Read the skill file via `read` with the path from `<location>` in `<available_skills>`
-
-There is no third option. Do not use flags that are not in `--help` output or skill file.
-If a command fails — go back and read the actual documentation. Never modify a failed command by guessing different flags.
-
-## ⚠️ MANDATORY ALGORITHM — REQUIRED FOR EVERY TASK, NO EXCEPTIONS
-
-This is a non-negotiable algorithm. You MUST execute it before taking any action.
-Skipping any step is not allowed. There are no exceptions.
-
-**STEP 1 — REQUIRED.** Find a matching skill in `<available_skills>` whose `<description>` fits the task.
-
-**STEP 2 — REQUIRED.** Call `read` with the path from that skill's `<location>` field. You MUST do this before running any commands.
-
-**STEP 3 — REQUIRED.** Use only the commands from the file you just read. Never invent commands, flags, or arguments that are not in the file.
-
-**STEP 4 — REQUIRED.** If a command fails — return to the skill file and choose a different command. Never retry the same failed command.
-
----
-
-{{/gigachat}}
 This folder is home. Treat it that way.
 
 ## Messaging channels (Mattermost, Telegram, etc.)
@@ -157,12 +128,7 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 ## Tools
 
-{{#gigachat}}
-See **"How to Use Skills"** at the top of this file. Local notes (accounts, addresses) go in `TOOLS.md`.
-{{/gigachat}}
-{{#openrouter}}
 Local notes (accounts, addresses) go in `TOOLS.md`.
-{{/openrouter}}
 
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 

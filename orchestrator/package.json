@@ -1,0 +1,23 @@
+{
+  "name": "clawfarm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local prototype of GigaClaw Orchestrator — manages user containers via Docker API (mirrors roadmap tasks 2.3-2.4)",
+  "bin": {
+    "clawfarm": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clawfarm": "ts-node src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dockerode": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.28",
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}

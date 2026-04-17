@@ -2,13 +2,14 @@ FROM node:22-slim
 
 ARG HIMALAYA_VERSION=1.2.0
 ARG GOGCLI_VERSION=0.12.0
+ARG GLAB_VERSION=1.92.1
 
 RUN apt-get update && \
-    apt-get install -y curl ca-certificates python3 git && \
+    apt-get install -y curl ca-certificates python3 python3-requests python3-dotenv jq git gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
-# Install OpenClaw (pinned to last known good version before 2026.3.22 streaming changes)
-RUN npm install -g openclaw@2026.3.13
+# Install OpenClaw
+RUN npm install -g openclaw@2026.4.14
 
 # Install Himalaya
 RUN ARCH=$(uname -m) && \
@@ -30,13 +31,33 @@ RUN ARCH=$(uname -m) && \
     curl -fsSL "https://github.com/steipete/gogcli/releases/download/v${GOGCLI_VERSION}/gogcli_${GOGCLI_VERSION}_${GA}.tar.gz" \
       | tar xz -C /usr/local/bin gog
 
+# Install glab (GitLab CLI) — skill workspace/skills/glab uses it
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  DA="amd64" ;; \
+      aarch64) DA="arm64" ;; \
+      *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL -o /tmp/glab.deb "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/${GLAB_VERSION}/glab_${GLAB_VERSION}_linux_${DA}.deb" && \
+    dpkg -i /tmp/glab.deb && rm /tmp/glab.deb
+
 # OpenClaw bundles the mattermost plugin internally — no separate install needed.
 # Installing it additionally via "openclaw plugins install" creates a duplicate
 # that causes double-handling of events (two parallel sessions per message).
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Templates & skills baked into the image — rendered per-user by `provision` subcommand
+COPY configs/openclaw.json.tpl        /opt/gigaclaw/templates/openclaw.json
+COPY configs/himalaya-config.toml.tpl /opt/gigaclaw/templates/himalaya-config.toml
+COPY workspace/AGENTS.md              /opt/gigaclaw/templates/AGENTS.md
+COPY workspace/TOOLS.md               /opt/gigaclaw/templates/TOOLS.md
+COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
+COPY workspace/skills                 /opt/gigaclaw/skills
+
+COPY scripts/provision.sh  /usr/local/bin/provision
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/provision /usr/local/bin/entrypoint
 
 EXPOSE 18789
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
+CMD ["gateway"]
