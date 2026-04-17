@@ -12,6 +12,12 @@
  *   list      ← 3.1 /admin list-users
  */
 
+// Load CLI config from orchestrator/.env before importing modules that read env vars.
+// Supported vars: GIGACLAW_IMAGE, GIGACLAW_DATA_ROOT, GIGACLAW_BASE_PORT.
+import * as path from 'path'
+import * as dotenv from 'dotenv'
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') })
+
 import { Command } from 'commander'
 import {
   addUser,
