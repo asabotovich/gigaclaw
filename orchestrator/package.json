@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local prototype of GigaClaw Orchestrator — manages user containers via Docker API (mirrors roadmap tasks 2.3-2.4)",
   "bin": {
-    "clawfarm": "./dist/cli.js"
+    "clawfarm": "./bin/clawfarm.js"
   },
   "scripts": {
     "build": "tsc",
