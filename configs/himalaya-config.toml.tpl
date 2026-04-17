@@ -1,20 +1,20 @@
 [accounts.default]
 default = true
-email = "{{EMAIL_ADDRESS}}"
+email = "${EMAIL_ADDRESS}"
 display-name = "openclawbot"
 downloads-dir = "/tmp"
 backend.type = "imap"
-backend.host = "{{IMAP_HOST}}"
+backend.host = "${IMAP_HOST}"
 backend.port = 993
-backend.login = "{{EMAIL_ADDRESS}}"
+backend.login = "${EMAIL_ADDRESS}"
 backend.encryption.type = "tls"
 backend.auth.type = "password"
-backend.auth.cmd = "echo '{{EMAIL_PASSWORD}}'"
+backend.auth.cmd = "echo '${EMAIL_PASSWORD}'"
 message.send.backend.type = "smtp"
-message.send.backend.host = "{{SMTP_HOST}}"
+message.send.backend.host = "${SMTP_HOST}"
 message.send.backend.port = 465
-message.send.backend.login = "{{EMAIL_ADDRESS}}"
+message.send.backend.login = "${EMAIL_ADDRESS}"
 message.send.backend.encryption.type = "tls"
 message.send.backend.auth.type = "password"
-message.send.backend.auth.cmd = "echo '{{EMAIL_PASSWORD}}'"
+message.send.backend.auth.cmd = "echo '${EMAIL_PASSWORD}'"
 message.send.save-copy = false
