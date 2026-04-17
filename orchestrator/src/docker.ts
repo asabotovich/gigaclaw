@@ -8,10 +8,18 @@
  */
 
 import Docker, { Container, ContainerInfo } from 'dockerode'
+import * as os from 'os'
 import { parseEnvFile, envToDockerArray } from './envfile'
 
+function expandPath(p: string): string {
+  return p
+    .replace(/^~(?=\/|$)/, os.homedir())
+    .replace(/\$HOME/g, os.homedir())
+    .replace(/\$USER/g, os.userInfo().username)
+}
+
 const IMAGE = process.env.GIGACLAW_IMAGE ?? 'gigaclaw:latest'
-const DATA_ROOT = process.env.GIGACLAW_DATA_ROOT ?? '/data/users'
+const DATA_ROOT = expandPath(process.env.GIGACLAW_DATA_ROOT ?? '/data/users')
 const BASE_PORT = Number(process.env.GIGACLAW_BASE_PORT ?? 18789)
 const USER_LABEL = 'gigaclaw.user'
 
