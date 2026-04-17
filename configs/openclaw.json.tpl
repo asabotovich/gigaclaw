@@ -82,7 +82,7 @@
     "port": 18789,
     "mode": "local",
     "bind": "lan",
-    "auth": { "mode": "password", "password": "${GATEWAY_PASSWORD}" },
+    "auth": { "mode": "token", "token": "${OPENCLAW_GATEWAY_TOKEN}" },
     "controlUi": {
       "allowedOrigins": [
         "http://127.0.0.1:18789",
