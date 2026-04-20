@@ -31,9 +31,30 @@ Consider `himalaya` (email) and `gog` (Google) optional — не трогай и
 
 If all required paths have values, **do NOT send a DM**. Gateway restart ≠ onboarding.
 
+## How to DM the owner (important: target format)
+
+Mattermost `message` tool does NOT accept a bare `@username` as `to`. You need a
+Mattermost user ID (opaque 26-char string). Resolve it via REST API, then cache
+it for the rest of the session.
+
+```bash
+MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
+MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
+OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  "$MM_URL/api/v4/users/username/${ADMIN_USERNAME}" | jq -r '.id')
+echo "$OWNER_ID"   # save this, use as user:<OWNER_ID> in message tool
+```
+
+Then send the DM:
+
+```
+message(action="send", to="user:<OWNER_ID>", message="Привет! ...")
+```
+
 ## Step 3 — Otherwise: introduce yourself + offer setup
 
-Пошли **один первый DM** пользователю `${ADMIN_USERNAME}` в Mattermost.
+Пошли **один первый DM** пользователю `${ADMIN_USERNAME}` в Mattermost
+(используя его user ID, см. секцию выше).
 Расскажи кто ты, что умеешь, и что конкретно ещё не настроено. Пример:
 
 > Привет! 👋 Я **GigaClaw** — твой рабочий ассистент в Mattermost.
@@ -83,6 +104,13 @@ If all required paths have values, **do NOT send a DM**. Gateway restart ≠ onb
    ```
    openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<значение>"
    ```
+
+   ⚠️ **Важно:** OpenClaw инжектит env из `skills.entries.*.env` только при
+   старте gateway. Только что сохранённый токен в `process.env` **не появится**.
+   Каждый скилл (см. его `SKILL.md`) должен читать токены из `openclaw.json`
+   через `jq` и `export` их в своём shell-блоке перед вызовом — тогда reset не
+   нужен и всё работает с первого запроса. Если скилл не следует этому паттерну
+   — сначала обнови его `SKILL.md`, потом вызывай.
 
 6. Подтверди кратко и предложи проверить:
    > ✅ Сохранил Jira-токен. Давай проверю — попробую найти твои задачи.

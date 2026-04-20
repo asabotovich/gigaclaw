@@ -12,29 +12,49 @@ Python utilities for Jira, Confluence, and Bitbucket integration, supporting bot
 
 **Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
 
-On provision the Orchestrator mirrors values from the host `.env` (if provided)
-into this config. The bot can also save tokens there itself via `openclaw config set`.
-Either way, skills read from there.
+**Always read credentials from the config at the start of each exec call** — do
+not rely on them being in `process.env`. OpenClaw's `env` injection only happens
+at gateway startup, so tokens saved mid-session need a restart OR the
+read-each-call pattern below.
 
-Expected paths:
+Expected paths in `openclaw.json`:
 - `skills.entries.atlassian.env.JIRA_URL`
 - `skills.entries.atlassian.env.JIRA_PAT_TOKEN` (Data Center) — or `JIRA_API_TOKEN` + `JIRA_USERNAME` (Cloud)
 - `skills.entries.atlassian.env.CONFLUENCE_URL`
 - `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN` (Data Center) — or the Cloud equivalents
+- `skills.entries.atlassian.env.JIRA_SSL_VERIFY` / `CONFLUENCE_SSL_VERIFY` (usually `"true"`)
 
-Check what's currently set:
+### Boilerplate for every call
 
 ```bash
-jq '.skills.entries.atlassian.env' /root/.openclaw/openclaw.json
+CFG=/root/.openclaw/openclaw.json
+export JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' "$CFG")
+export JIRA_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.JIRA_PAT_TOKEN // empty' "$CFG")
+export JIRA_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.JIRA_SSL_VERIFY // "true"' "$CFG")
+export CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' "$CFG")
+export CONFLUENCE_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN // empty' "$CFG")
+export CONFLUENCE_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_SSL_VERIFY // "true"' "$CFG")
+
+cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
+from scripts.jira_search import jira_search
+import json
+print(jira_search(jql='...'))
+"
 ```
 
-If a token is missing — ask the user for it, then save:
+Each `exec` tool call starts a fresh shell → fresh env from config → always uses current token. **No gateway restart needed.**
+
+### If a token is missing
+
+Ask the user for it (with the link to generate), then save:
 
 ```bash
 openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<token>"
 ```
 
-Token is available on the next skill call — no restart needed. Never echo tokens back to the user.
+After `config set` — immediately re-read and re-export using the boilerplate above; the very next call works.
+
+**Never echo tokens back to the user, even partially.**
 
 Links:
 - Jira PAT (Data Center): `<JIRA_URL>/secure/ViewProfile.jspa` → "Personal Access Tokens"
