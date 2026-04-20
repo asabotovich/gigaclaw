@@ -29,12 +29,8 @@ Consider `himalaya` (email) and `gog` (Google) optional — не трогай и
 
 ## Step 2 — Stay quiet if nothing is missing
 
-If all required paths have values, **do NOT send a DM** — just reply `NO_REPLY`.
-Gateway restart ≠ onboarding.
-
-(Note: a startup hook in the container deletes this file after the first boot
-anyway, so you only run on truly fresh installs. If you're seeing this file —
-the owner has not yet been greeted.)
+If all required paths have values, **do NOT send a DM** — just reply `NO_REPLY`
+(but still disable the hook per Step 5 below).
 
 ## How to DM the owner (important: target format)
 
@@ -154,6 +150,21 @@ message(action="send", to="user:<OWNER_ID>", message="Привет! ...")
 > про React 19».
 
 Не возвращайся к онбордингу до тех пор, пока пользователь сам не попросит.
+
+## Step 6 — В самом конце (ВАЖНО) — отключи boot-md hook
+
+Чтобы **не** приветствовать пользователя заново при каждом рестарте контейнера:
+
+```bash
+openclaw config set hooks.internal.entries.boot-md.enabled false
+```
+
+Это выполни **один раз** в конце своего boot-turn, **независимо** от того
+отправил ты DM (Step 3) или промолчал (Step 2). Дальше при рестартах gateway
+хук будет пропущен, BOOT.md не выполнится.
+
+Если пользователь позже попросит настроить ещё один сервис — это обычный DM,
+а не boot-логика. Хук должен остаться выключенным.
 
 ## Важные правила
 
