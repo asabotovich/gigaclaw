@@ -45,12 +45,13 @@ RUN ARCH=$(uname -m) && \
 # Installing it additionally via "openclaw plugins install" creates a duplicate
 # that causes double-handling of events (two parallel sessions per message).
 
-# Templates & skills baked into the image — rendered per-user by `provision` subcommand
-COPY configs/openclaw.json.tpl        /opt/gigaclaw/templates/openclaw.json
+# Templates & skills baked into the image — materialized per-user by `provision` subcommand
+COPY configs/patches.jq               /opt/gigaclaw/patches.jq
 COPY configs/himalaya-config.toml.tpl /opt/gigaclaw/templates/himalaya-config.toml
 COPY workspace/AGENTS.md              /opt/gigaclaw/templates/AGENTS.md
 COPY workspace/TOOLS.md               /opt/gigaclaw/templates/TOOLS.md
 COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
+COPY workspace/BOOTSTRAP.md           /opt/gigaclaw/templates/BOOTSTRAP.md
 COPY workspace/skills                 /opt/gigaclaw/skills
 
 COPY scripts/provision.sh  /usr/local/bin/provision

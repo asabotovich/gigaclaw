@@ -105,6 +105,25 @@ npx clawfarm remove asabotovich
 #   директория /data/users/asabotovich/ остаётся — очистить вручную если нужно
 ```
 
+### Массовый апгрейд образа
+
+Для обновления **всех** пользователей на новую версию образа есть хелпер в корне репозитория:
+
+```bash
+# Пересобрать и обновить всех на свежий gigaclaw:latest
+docker build -t gigaclaw:latest .
+./upgrade.sh
+
+# Или указать конкретный тег из registry
+docker pull registry/gigaclaw:v1.2.3
+./upgrade.sh registry/gigaclaw:v1.2.3
+```
+
+Скрипт проходит по всем контейнерам с меткой `gigaclaw.user=<name>` и для каждого
+делает `clawfarm reset <user> --env ../.env.<user>`. Данные (`memory/`, `agents/`,
+`openclaw.json` с токенами) переживают пересоздание. Это прото того, что в проде
+станет `POST /admin/upgrade` из Orchestrator (роадмап, задача 6.1).
+
 ### Переменные окружения CLI
 
 | Переменная | Дефолт | Для чего |
