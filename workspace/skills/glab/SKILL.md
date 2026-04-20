@@ -17,7 +17,7 @@ at gateway startup, so tokens saved mid-session require the read-each-call
 pattern below (or a container restart).
 
 Expected paths in `openclaw.json`:
-- `skills.entries.glab.env.GITLAB_HOST` (e.g. `git.sberdevices.ru`)
+- `skills.entries.glab.env.GITLAB_HOST`
 - `skills.entries.glab.env.GITLAB_TOKEN` (PAT with `read_api`, `read_repository` scopes)
 
 ### Boilerplate for every call
@@ -48,9 +48,14 @@ After save — immediately re-read and re-export using the boilerplate above; th
 
 Если `GITLAB_TOKEN` пустой — веди пользователя пошагово:
 
-Скажи в DM (URL возьми из `skills.entries.glab.env.GITLAB_HOST`, типично `git.sberdevices.ru`):
+Возьми URL из конфига:
+```bash
+GITLAB_HOST=$(jq -r '.skills.entries.glab.env.GITLAB_HOST // empty' /root/.openclaw/openclaw.json)
+```
 
-> Открой **https://git.sberdevices.ru/-/user_settings/personal_access_tokens**
+Скажи в DM (подставив `$GITLAB_HOST`):
+
+> Открой **https://$GITLAB_HOST/-/user_settings/personal_access_tokens**
 > (войди если попросит).
 >
 > Создай новый токен:
