@@ -18,8 +18,12 @@ envsubst < "$TPL/TOOLS.md"             > "$WS/TOOLS.md"
 envsubst < "$TPL/himalaya-config.toml" > /root/.config/himalaya/config.toml
 
 # --- User data: seed once, never overwrite ---
-[ -f "$WS/USER.md" ]      || envsubst < "$TPL/USER.md"      > "$WS/USER.md"
-[ -f "$WS/BOOTSTRAP.md" ] || cp "$TPL/BOOTSTRAP.md" "$WS/BOOTSTRAP.md"
+[ -f "$WS/USER.md" ] || envsubst < "$TPL/USER.md" > "$WS/USER.md"
+
+# --- BOOT.md: always overwrite. Triggers on gateway startup via boot-md hook.
+#     Content changes between releases must take effect immediately on reset,
+#     so we re-render every provision (no runtime state lives inside BOOT.md).
+envsubst < "$TPL/BOOT.md" > "$WS/BOOT.md"
 
 # --- Skills (always overwrite skill *code*; runtime state files not in source are preserved) ---
 for skill_dir in /opt/gigaclaw/skills/*/; do

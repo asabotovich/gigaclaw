@@ -16,7 +16,10 @@ Never include in replies: internal IDs, channel IDs, API response details, tool 
 
 ## First Run
 
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
+On every gateway startup, the `boot-md` hook runs `BOOT.md` as an agent turn.
+That file handles proactive onboarding — it decides whether to greet the owner
+or stay silent based on which credentials are already configured. Don't
+duplicate that logic here.
 
 ## Every Session
 
