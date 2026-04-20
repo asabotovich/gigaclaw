@@ -10,6 +10,22 @@ Python utilities for Jira, Confluence, and Bitbucket integration, supporting bot
 
 ## Credentials (read this FIRST)
 
+**BEFORE asking the user for anything related to Atlassian setup, FIRST run:**
+
+```bash
+jq '.skills.entries.atlassian.env' /root/.openclaw/openclaw.json
+```
+
+This shows what's already configured. The Orchestrator pre-populates URLs and
+SSL flags from the host `.env` (e.g. `JIRA_URL=https://tasks.sberdevices.ru`,
+`CONFLUENCE_URL=https://confluence.sberdevices.ru`) — **do not re-ask those**.
+
+Only the **tokens** are user-provided (missing on a fresh container). If the
+user supplies a token, you already know the URL from the config — just save
+the token and proceed. Do NOT ask "is it Cloud or DC?", "what's the URL?",
+"what's your username?" unless the corresponding fields are genuinely absent
+from `openclaw.json`.
+
 **Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
 
 **Always read credentials from the config at the start of each exec call** — do
