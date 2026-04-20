@@ -227,6 +227,10 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 
 **Never use native Linux `cron`, `at`, or `sleep` loops for scheduling.** OpenClaw has a built-in scheduler that survives restarts, is visible in the dashboard, and can deliver results back to the chat.
 
+The container auto-pairs the in-container CLI with full operator scope at
+startup (`self-pair-cli` entrypoint hook), so `openclaw cron add/list/rm` and
+similar gateway-scoped commands work out of the box.
+
 ### Recurring tasks
 
 ```bash
