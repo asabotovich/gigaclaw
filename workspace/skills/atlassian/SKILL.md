@@ -1,5 +1,5 @@
 ---
-name: atlassian-skills
+name: atlassian
 description: Python utilities for Jira, Confluence, and Bitbucket integration. Provides issue management, search, workflows, page management, pull requests, commit history, and more. Use when users need to interact with Atlassian products like "create a Jira issue", "search Confluence pages", "create a pull request", "get commit history", or "update sprint status".
 license: Complete terms in LICENSE
 ---
@@ -7,6 +7,38 @@ license: Complete terms in LICENSE
 # Atlassian Skills
 
 Python utilities for Jira, Confluence, and Bitbucket integration, supporting both Cloud and Data Center deployments.
+
+## Credentials (read this FIRST)
+
+**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
+
+On provision the Orchestrator mirrors values from the host `.env` (if provided)
+into this config. The bot can also save tokens there itself via `openclaw config set`.
+Either way, skills read from there.
+
+Expected paths:
+- `skills.entries.atlassian.env.JIRA_URL`
+- `skills.entries.atlassian.env.JIRA_PAT_TOKEN` (Data Center) — or `JIRA_API_TOKEN` + `JIRA_USERNAME` (Cloud)
+- `skills.entries.atlassian.env.CONFLUENCE_URL`
+- `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN` (Data Center) — or the Cloud equivalents
+
+Check what's currently set:
+
+```bash
+jq '.skills.entries.atlassian.env' /root/.openclaw/openclaw.json
+```
+
+If a token is missing — ask the user for it, then save:
+
+```bash
+openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<token>"
+```
+
+Token is available on the next skill call — no restart needed. Never echo tokens back to the user.
+
+Links:
+- Jira PAT (Data Center): `<JIRA_URL>/secure/ViewProfile.jspa` → "Personal Access Tokens"
+- Confluence PAT: `<CONFLUENCE_URL>/plugins/personalaccesstokens/usertokens.action`
 
 ## Configuration
 
