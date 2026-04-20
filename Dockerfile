@@ -54,9 +54,10 @@ COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
 COPY workspace/BOOT.md                /opt/gigaclaw/templates/BOOT.md
 COPY workspace/skills                 /opt/gigaclaw/skills
 
-COPY scripts/provision.sh  /usr/local/bin/provision
-COPY scripts/entrypoint.sh /usr/local/bin/entrypoint
-RUN chmod +x /usr/local/bin/provision /usr/local/bin/entrypoint
+COPY scripts/provision.sh    /usr/local/bin/provision
+COPY scripts/entrypoint.sh   /usr/local/bin/entrypoint
+COPY scripts/self-pair-cli.sh /usr/local/bin/self-pair-cli
+RUN chmod +x /usr/local/bin/provision /usr/local/bin/entrypoint /usr/local/bin/self-pair-cli
 
 EXPOSE 18789
 
