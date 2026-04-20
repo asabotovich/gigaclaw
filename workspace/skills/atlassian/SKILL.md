@@ -17,8 +17,7 @@ jq '.skills.entries.atlassian.env' /root/.openclaw/openclaw.json
 ```
 
 This shows what's already configured. The Orchestrator pre-populates URLs and
-SSL flags from the host `.env` (e.g. `JIRA_URL=https://tasks.sberdevices.ru`,
-`CONFLUENCE_URL=https://confluence.sberdevices.ru`) — **do not re-ask those**.
+SSL flags from the host `.env` — **do not re-ask URLs from the user**.
 
 Only the **tokens** are user-provided (missing on a fresh container). If the
 user supplies a token, you already know the URL from the config — just save
@@ -79,10 +78,15 @@ After `config set` — immediately re-read and re-export using the boilerplate a
 
 ### Jira (Data Center)
 
-Скажи в DM:
+Сначала возьми URL из конфига:
+```bash
+JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' /root/.openclaw/openclaw.json)
+```
+
+Скажи в DM (подставив `$JIRA_URL`):
 
 > Открой в браузере свой профиль Jira:
-> **https://tasks.sberdevices.ru/secure/ViewProfile.jspa**
+> **$JIRA_URL/secure/ViewProfile.jspa**
 > (войди если попросит).
 >
 > Слева найди раздел **Personal Access Tokens** → нажми **Create token**.
@@ -118,13 +122,16 @@ print(jira_search(jql='assignee = currentUser() ORDER BY updated DESC', limit=3,
 > • AIDISRUPT-3 — …
 > …
 
-Если URL в `openclaw.json` отличается от sberdevices — подставь правильный в сообщение (`jq -r '.skills.entries.atlassian.env.JIRA_URL'`).
-
 ### Confluence
 
-Аналогично:
+Возьми URL из конфига:
+```bash
+CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' /root/.openclaw/openclaw.json)
+```
 
-> Открой **https://confluence.sberdevices.ru/plugins/personalaccesstokens/usertokens.action**
+Скажи в DM:
+
+> Открой **$CONFLUENCE_URL/plugins/personalaccesstokens/usertokens.action**
 > → **Create token** → Expiry: Never → **Create**.
 >
 > Скопируй и пришли токен.
