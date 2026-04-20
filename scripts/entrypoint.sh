@@ -20,6 +20,16 @@ case "${1:-gateway}" in
       fi
     fi
 
+    # Render himalaya config from template. Must happen here (not in provision)
+    # because /root/.config/himalaya/ is outside the bind mount — a one-shot
+    # provision container's filesystem is discarded on exit.
+    if [ -f /opt/gigaclaw/templates/himalaya-config.toml ]; then
+      mkdir -p /root/.config/himalaya
+      envsubst '${EMAIL_ADDRESS} ${EMAIL_PASSWORD} ${IMAP_HOST} ${SMTP_HOST}' \
+        < /opt/gigaclaw/templates/himalaya-config.toml \
+        > /root/.config/himalaya/config.toml
+    fi
+
     # Self-pair the CLI with operator.write in background (idempotent, non-fatal).
     # Must run after gateway is listening — the script waits internally.
     /usr/local/bin/self-pair-cli &
