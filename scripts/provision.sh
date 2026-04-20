@@ -12,18 +12,23 @@ WS="$OC/workspace"
 
 mkdir -p "$WS/memory" "$WS/skills" "$OC/agents" "$OC/cron" /root/.config/himalaya
 
+# envsubst by default expands every $VAR it finds — that corrupts literal bash
+# snippets inside the templates (e.g. `$MM_TOKEN`, `$OWNER_ID` in BOOT.md example
+# commands). Restrict substitution to the exact placeholders we author.
+ALLOW='${ADMIN_NAME} ${ADMIN_USERNAME} ${JIRA_URL} ${CONFLUENCE_URL} ${GITLAB_HOST} ${MM_BASE_URL} ${EMAIL_ADDRESS} ${EMAIL_PASSWORD} ${IMAP_HOST} ${SMTP_HOST}'
+
 # --- System prompts (always overwritten — no user content) ---
-envsubst < "$TPL/AGENTS.md"            > "$WS/AGENTS.md"
-envsubst < "$TPL/TOOLS.md"             > "$WS/TOOLS.md"
-envsubst < "$TPL/himalaya-config.toml" > /root/.config/himalaya/config.toml
+envsubst "$ALLOW" < "$TPL/AGENTS.md"            > "$WS/AGENTS.md"
+envsubst "$ALLOW" < "$TPL/TOOLS.md"             > "$WS/TOOLS.md"
+envsubst "$ALLOW" < "$TPL/himalaya-config.toml" > /root/.config/himalaya/config.toml
 
 # --- User data: seed once, never overwrite ---
-[ -f "$WS/USER.md" ] || envsubst < "$TPL/USER.md" > "$WS/USER.md"
+[ -f "$WS/USER.md" ] || envsubst "$ALLOW" < "$TPL/USER.md" > "$WS/USER.md"
 
 # --- BOOT.md: always overwrite. Triggers on gateway startup via boot-md hook.
 #     Content changes between releases must take effect immediately on reset,
 #     so we re-render every provision (no runtime state lives inside BOOT.md).
-envsubst < "$TPL/BOOT.md" > "$WS/BOOT.md"
+envsubst "$ALLOW" < "$TPL/BOOT.md" > "$WS/BOOT.md"
 
 # --- Skills (always overwrite skill *code*; runtime state files not in source are preserved) ---
 for skill_dir in /opt/gigaclaw/skills/*/; do
