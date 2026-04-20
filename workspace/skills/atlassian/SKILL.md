@@ -6,7 +6,7 @@ license: Complete terms in LICENSE
 
 # Atlassian Skills
 
-Python utilities for Jira, Confluence, and Bitbucket integration, supporting both Cloud and Data Center deployments.
+Python utilities for Jira and Confluence Data Center.
 
 ## Credentials (read this FIRST)
 
@@ -21,9 +21,8 @@ SSL flags from the host `.env` — **do not re-ask URLs from the user**.
 
 Only the **tokens** are user-provided (missing on a fresh container). If the
 user supplies a token, you already know the URL from the config — just save
-the token and proceed. Do NOT ask "is it Cloud or DC?", "what's the URL?",
-"what's your username?" unless the corresponding fields are genuinely absent
-from `openclaw.json`.
+the token and proceed. Do NOT ask "what's the URL?" unless the corresponding
+field is genuinely absent from `openclaw.json`.
 
 **Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
 
@@ -34,9 +33,9 @@ read-each-call pattern below.
 
 Expected paths in `openclaw.json`:
 - `skills.entries.atlassian.env.JIRA_URL`
-- `skills.entries.atlassian.env.JIRA_PAT_TOKEN` (Data Center) — or `JIRA_API_TOKEN` + `JIRA_USERNAME` (Cloud)
+- `skills.entries.atlassian.env.JIRA_PAT_TOKEN`
 - `skills.entries.atlassian.env.CONFLUENCE_URL`
-- `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN` (Data Center) — or the Cloud equivalents
+- `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN`
 - `skills.entries.atlassian.env.JIRA_SSL_VERIFY` / `CONFLUENCE_SSL_VERIFY` (usually `"true"`)
 
 ### Boilerplate for every call
@@ -154,47 +153,9 @@ print(confluence_list_spaces(limit=5))
 "
 ```
 
-### Cloud-вариант
-
-Если по URL видно `atlassian.net` (Cloud) — понадобится пара **email + API token**.
-Объясни пользователю:
-> Создай API token: **https://id.atlassian.com/manage-profile/security/api-tokens**
-> → **Create API token** → скопируй.
-> Также пришли свой email (тот что в Atlassian).
-
-Сохрани **оба**:
-```bash
-openclaw config set skills.entries.atlassian.env.JIRA_USERNAME "<email>"
-openclaw config set skills.entries.atlassian.env.JIRA_API_TOKEN "<token>"
-```
-
-Fallback — если ничего из вышеперечисленного не сработало, сохрани что пользователь дал как `JIRA_PAT_TOKEN` и сделай любой `jira_search` чтобы проверить что auth работает.
-
 ## Configuration
 
-Two configuration modes are supported:
-
-### Mode 1: Environment Variables (Traditional)
-
-Set environment variables based on your deployment type. This mode is used when `credentials` parameter is not provided to skill functions.
-
-#### Cloud (API Token)
-
-```bash
-# Jira Cloud
-JIRA_URL=https://your-company.atlassian.net
-JIRA_USERNAME=your.email@company.com
-JIRA_API_TOKEN=your_api_token
-
-# Confluence Cloud
-CONFLUENCE_URL=https://your-company.atlassian.net/wiki
-CONFLUENCE_USERNAME=your.email@company.com
-CONFLUENCE_API_TOKEN=your_api_token
-```
-
-Generate API tokens at: https://id.atlassian.com/manage-profile/security/api-tokens
-
-#### Data Center / Server (PAT Token)
+Environment variables (Data Center deployment):
 
 ```bash
 # Jira Data Center
@@ -204,13 +165,7 @@ JIRA_PAT_TOKEN=your_pat_token
 # Confluence Data Center
 CONFLUENCE_URL=https://confluence.your-company.com
 CONFLUENCE_PAT_TOKEN=your_pat_token
-
-# Bitbucket Server/Data Center
-BITBUCKET_URL=https://bitbucket.your-company.com
-BITBUCKET_PAT_TOKEN=your_pat_token
 ```
-
-> **Note**: PAT Token takes precedence if both are provided.
 
 ### Mode 2: Parameter-Based (Agent Environments)
 
