@@ -27,29 +27,14 @@ Compute which paths are **missing or empty**:
 Consider `himalaya` (email) and `gog` (Google) optional — не трогай их пока
 пользователь сам не заведёт разговор про почту/Google.
 
-## Step 2 — Stay quiet if nothing is missing OR if already greeted
+## Step 2 — Stay quiet if nothing is missing
 
-Перед отправкой DM проверь маркер:
-```bash
-test -f /root/.openclaw/workspace/.onboarding-greeted
-```
+If all required paths have values, **do NOT send a DM** — just reply `NO_REPLY`.
+Gateway restart ≠ onboarding.
 
-Если **файл уже существует** — не шли приветствие, просто выйди с NO_REPLY.
-Пользователь уже получал это сообщение, повторять при каждом рестарте — спам.
-
-Если **все токены на месте И маркера нет** — создай маркер и выйди молча:
-```bash
-echo "$(date -Iseconds)" > /root/.openclaw/workspace/.onboarding-greeted
-```
-
-Если **токены неполные И маркера нет** — продолжай на Step 3 (первый онбординг).
-В конце Step 3 / после отправки DM — создай маркер:
-```bash
-echo "$(date -Iseconds)" > /root/.openclaw/workspace/.onboarding-greeted
-```
-
-Пользователь потом **сам** попросит настроить оставшиеся сервисы когда будет готов.
-Настаивать на каждом рестарте — плохой UX.
+(Note: a startup hook in the container deletes this file after the first boot
+anyway, so you only run on truly fresh installs. If you're seeing this file —
+the owner has not yet been greeted.)
 
 ## How to DM the owner (important: target format)
 
