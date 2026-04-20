@@ -12,7 +12,7 @@ Host (VM или ноутбук)
 │       ├── шаблоны + скиллы запечены в образ (/opt/gigaclaw/)
 │       └── workspace: bind mount /data/users/<username>/  → /root/.openclaw/
 └── orchestrator/          ← TS CLI (dockerode), аналог будущего Orchestrator
-    npx clawfarm add-user / list / logs / reset / remove
+    clawfarm add-user / list / logs / reset / remove
 ```
 
 Скиллы в образе: `mattermost`, `atlassian` (Jira + Confluence через PAT), `glab` (GitLab CLI), `himalaya` (IMAP/SMTP), `gog` (Google Workspace).
@@ -62,18 +62,35 @@ cp .env.example .env.asabotovich
 | `GITLAB_HOST`, `GITLAB_TOKEN` | корп. GitLab (scopes: `read_api`, `read_repository`) |
 | `GOG_KEYRING_PASSWORD`, `GOG_ACCOUNT` | Google Workspace (см. ниже) |
 
-### 3. Поставить зависимости CLI (один раз)
+### 3. Установить CLI (один раз)
 
 ```bash
 cd orchestrator
 npm install
+npm link                     # создаст /usr/local/bin/clawfarm → ./bin/clawfarm.js
 ```
+
+Теперь команда `clawfarm` доступна глобально из любой директории. После `git pull`
+пересобирать ничего не надо — shim fallback'ится на `ts-node` и подхватывает свежий код.
+
+Без `npm link` можно использовать `clawfarm <...>` из `orchestrator/`.
+
+**Автодополнение в zsh** (опционально, но приятно):
+
+```bash
+# Добавь эти две строки в ~/.zshrc, подставь реальный путь к репо:
+echo "fpath=($PWD/completions \$fpath)" >> ~/.zshrc
+echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+source ~/.zshrc
+```
+
+После этого: `clawfarm <TAB>` выдаёт список команд, `clawfarm logs <TAB>` —
+список активных пользователей (из docker labels), `--env <TAB>` — `.env*` файлы.
 
 ### 4. Поднять бота
 
 ```bash
-cd orchestrator
-npx clawfarm add-user asabotovich --env ../.env.asabotovich
+clawfarm add-user asabotovich --env ../.env.asabotovich
 ```
 
 `add-user` делает:
@@ -86,22 +103,22 @@ npx clawfarm add-user asabotovich --env ../.env.asabotovich
 cd orchestrator
 
 # Список всех ботов
-npx clawfarm list
+clawfarm list
 
 # Логи
-npx clawfarm logs asabotovich -f
+clawfarm logs asabotovich -f
 
 # Остановить / запустить (данные сохраняются)
-npx clawfarm stop asabotovich
-npx clawfarm start asabotovich
+clawfarm stop asabotovich
+clawfarm start asabotovich
 
 # Пересоздать контейнер (после смены токена или обновления образа)
 #   workspace/ переживает reset — только AGENTS.md/TOOLS.md перезаписываются,
 #   USER.md и memory/ остаются
-npx clawfarm reset asabotovich --env ../.env.asabotovich
+clawfarm reset asabotovich --env ../.env.asabotovich
 
 # Удалить бота (контейнер)
-npx clawfarm remove asabotovich
+clawfarm remove asabotovich
 #   директория /data/users/asabotovich/ остаётся — очистить вручную если нужно
 ```
 
@@ -186,7 +203,7 @@ docker exec -it gigaclaw-asabotovich \
 
 **Бот не отвечает в MM**
 ```bash
-npx clawfarm logs asabotovich | tail -50
+clawfarm logs asabotovich | tail -50
 ```
 
 **Сбросить все сессии (свежий контекст)**
@@ -197,16 +214,16 @@ docker exec -it gigaclaw-asabotovich mkdir -p /root/.openclaw/agents/main/sessio
 
 **Полный сброс пользователя** (⚠️ удаляет память бота)
 ```bash
-npx clawfarm remove asabotovich
+clawfarm remove asabotovich
 rm -rf /data/users/asabotovich
-npx clawfarm add-user asabotovich --env ../.env.asabotovich
+clawfarm add-user asabotovich --env ../.env.asabotovich
 ```
 
 **Обновить образ**
 ```bash
 docker build -t gigaclaw:latest .
 # пересоздать всех пользователей на новом образе:
-npx clawfarm reset asabotovich --env ../.env.asabotovich
+clawfarm reset asabotovich --env ../.env.asabotovich
 ```
 
 ## Маппинг на будущий Orchestrator (роадмап)
