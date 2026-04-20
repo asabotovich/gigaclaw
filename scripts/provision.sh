@@ -10,17 +10,20 @@ TPL="/opt/gigaclaw/templates"
 OC="/root/.openclaw"
 WS="$OC/workspace"
 
-mkdir -p "$WS/memory" "$WS/skills" "$OC/agents" "$OC/cron" /root/.config/himalaya
+mkdir -p "$WS/memory" "$WS/skills" "$OC/agents" "$OC/cron"
 
 # envsubst by default expands every $VAR it finds — that corrupts literal bash
 # snippets inside the templates (e.g. `$MM_TOKEN`, `$OWNER_ID` in BOOT.md example
 # commands). Restrict substitution to the exact placeholders we author.
-ALLOW='${ADMIN_NAME} ${ADMIN_USERNAME} ${JIRA_URL} ${CONFLUENCE_URL} ${GITLAB_HOST} ${MM_BASE_URL} ${EMAIL_ADDRESS} ${EMAIL_PASSWORD} ${IMAP_HOST} ${SMTP_HOST}'
+ALLOW='${ADMIN_NAME} ${ADMIN_USERNAME} ${JIRA_URL} ${CONFLUENCE_URL} ${GITLAB_HOST} ${MM_BASE_URL}'
 
 # --- System prompts (always overwritten — no user content) ---
-envsubst "$ALLOW" < "$TPL/AGENTS.md"            > "$WS/AGENTS.md"
-envsubst "$ALLOW" < "$TPL/TOOLS.md"             > "$WS/TOOLS.md"
-envsubst "$ALLOW" < "$TPL/himalaya-config.toml" > /root/.config/himalaya/config.toml
+envsubst "$ALLOW" < "$TPL/AGENTS.md" > "$WS/AGENTS.md"
+envsubst "$ALLOW" < "$TPL/TOOLS.md"  > "$WS/TOOLS.md"
+
+# NOTE: himalaya-config.toml is rendered in the runtime container by
+# scripts/entrypoint.sh, because /root/.config/himalaya/ is outside the bind
+# mount and wouldn't survive the exit of this one-shot provision container.
 
 # --- User data: seed once, never overwrite ---
 [ -f "$WS/USER.md" ] || envsubst "$ALLOW" < "$TPL/USER.md" > "$WS/USER.md"
