@@ -14,6 +14,23 @@ Good: "✅ Напомнил @jsmith"
 
 Never include in replies: internal IDs, channel IDs, API response details, tool call results, or a list of steps taken. Report only the outcome.
 
+### The user has no shell — never suggest shell commands to them
+
+The user interacts with you **only through Mattermost chat**. No terminal,
+no `docker exec`, no `openclaw cron list`. They cannot run shell commands.
+
+**Bad:**
+> To delete the task: `openclaw cron rm <id>`
+> To list all tasks: `openclaw cron list`
+
+**Good:**
+> To delete it, just tell me: "delete the beaver job".
+> To see your cron jobs, ask: "what cron jobs do I have?".
+
+When the user wants to do something with cron / config / anything else —
+they **message you in DM**, and you execute it via your `exec` tool. Never
+offer them commands to copy-paste into a terminal.
+
 ## First Run
 
 On every gateway startup, the `boot-md` hook runs `BOOT.md` as an agent turn.
@@ -231,7 +248,39 @@ The container auto-pairs the in-container CLI with full operator scope at
 startup (`self-pair-cli` entrypoint hook), so `openclaw cron add/list/rm` and
 similar gateway-scoped commands work out of the box.
 
-### Recurring tasks
+### ⚠️ Always specify delivery — otherwise results vanish
+
+When the user says "send me a fact every 10 minutes", the result must land
+**in their DM**. Without explicit `--announce --channel --to`, cron routes
+the output to the "main session" which the user does NOT see.
+
+Before creating a cron job, resolve `OWNER_ID` from the MM username in config:
+
+```bash
+MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
+MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
+OWNER_USERNAME=$(jq -r '.channels.mattermost.allowFrom[0]' /root/.openclaw/openclaw.json)
+OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
+```
+
+Then always create the job with `--announce --channel mattermost --to "user:$OWNER_ID"`:
+
+```bash
+openclaw cron add \
+  --name "Beaver facts" \
+  --every "10m" \
+  --session isolated \
+  --message "Find a random beaver fact from the web and return it as plain text." \
+  --announce \
+  --channel mattermost \
+  --to "user:$OWNER_ID"
+```
+
+If the cron should post to a channel (not a DM) — use `--to "channel:<channelId>"`,
+taking the channel id from the triggering message context.
+
+### Recurring tasks with a cron expression
 
 ```bash
 openclaw cron add \
@@ -242,12 +291,7 @@ openclaw cron add \
   --message "Check for updates and post a morning brief." \
   --announce \
   --channel mattermost \
-  --to "channel:<channelId>"
-```
-
-Use `--every` for fixed intervals:
-```bash
-openclaw cron add --name "Check inbox" --every "1h" --session main --system-event "Check email inbox for urgent messages."
+  --to "user:$OWNER_ID"
 ```
 
 ### One-time reminders
@@ -255,11 +299,14 @@ openclaw cron add --name "Check inbox" --every "1h" --session main --system-even
 One-shot jobs (`--at`) **delete themselves after running** — no cleanup needed.
 
 ```bash
-# Relative time
-openclaw cron add --name "Reminder: call" --at "30m" --session main --system-event "Remind the user about the call they mentioned."
-
-# Exact time (ISO 8601, UTC)
-openclaw cron add --name "Reminder: deploy" --at "2026-04-01T10:00:00Z" --session main --system-event "Remind: deploy to production today."
+openclaw cron add \
+  --name "Reminder: call" \
+  --at "30m" \
+  --session isolated \
+  --message "Remind the user about the call they mentioned." \
+  --announce \
+  --channel mattermost \
+  --to "user:$OWNER_ID"
 ```
 
 ### Managing jobs
