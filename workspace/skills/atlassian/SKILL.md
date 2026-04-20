@@ -72,9 +72,96 @@ After `config set` — immediately re-read and re-export using the boilerplate a
 
 **Never echo tokens back to the user, even partially.**
 
-Links:
-- Jira PAT (Data Center): `<JIRA_URL>/secure/ViewProfile.jspa` → "Personal Access Tokens"
-- Confluence PAT: `<CONFLUENCE_URL>/plugins/personalaccesstokens/usertokens.action`
+## Setup walkthrough (use when user asks "настрой Jira" / "подключи Confluence")
+
+Если хотя бы один из токенов пустой — веди пользователя пошагово по сервису.
+**Не дублируй сразу оба сервиса** — сначала Jira, потом Confluence (по просьбе).
+
+### Jira (Data Center)
+
+Скажи в DM:
+
+> Открой в браузере свой профиль Jira:
+> **https://tasks.sberdevices.ru/secure/ViewProfile.jspa**
+> (войди если попросит).
+>
+> Слева найди раздел **Personal Access Tokens** → нажми **Create token**.
+>
+> В форме:
+> • Token Name: `gigaclaw` (любое)
+> • Expiry: **Never** (или максимум)
+> • Нажми **Create**.
+>
+> Скопируй выданную строку (она длинная, начинается с цифр/букв) и пришли
+> её мне следующим сообщением.
+
+Когда пользователь прислал строку — сохрани:
+```bash
+openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<значение>"
+```
+
+И **сразу** sanity-check (используя boilerplate выше):
+```bash
+CFG=/root/.openclaw/openclaw.json
+export JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' "$CFG")
+export JIRA_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.JIRA_PAT_TOKEN // empty' "$CFG")
+export JIRA_SSL_VERIFY=true
+
+cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
+from scripts.jira_search import jira_search
+print(jira_search(jql='assignee = currentUser() ORDER BY updated DESC', limit=3, fields='key,summary,status'))
+"
+```
+
+Ответь пользователю:
+> ✅ Jira подключена. Нашёл твои задачи:
+> • AIDISRUPT-3 — …
+> …
+
+Если URL в `openclaw.json` отличается от sberdevices — подставь правильный в сообщение (`jq -r '.skills.entries.atlassian.env.JIRA_URL'`).
+
+### Confluence
+
+Аналогично:
+
+> Открой **https://confluence.sberdevices.ru/plugins/personalaccesstokens/usertokens.action**
+> → **Create token** → Expiry: Never → **Create**.
+>
+> Скопируй и пришли токен.
+
+Сохрани:
+```bash
+openclaw config set skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN "<значение>"
+```
+
+Sanity-check:
+```bash
+CFG=/root/.openclaw/openclaw.json
+export CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' "$CFG")
+export CONFLUENCE_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN // empty' "$CFG")
+export CONFLUENCE_SSL_VERIFY=true
+
+cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
+from scripts.confluence_spaces import confluence_list_spaces
+print(confluence_list_spaces(limit=5))
+"
+```
+
+### Cloud-вариант
+
+Если по URL видно `atlassian.net` (Cloud) — понадобится пара **email + API token**.
+Объясни пользователю:
+> Создай API token: **https://id.atlassian.com/manage-profile/security/api-tokens**
+> → **Create API token** → скопируй.
+> Также пришли свой email (тот что в Atlassian).
+
+Сохрани **оба**:
+```bash
+openclaw config set skills.entries.atlassian.env.JIRA_USERNAME "<email>"
+openclaw config set skills.entries.atlassian.env.JIRA_API_TOKEN "<token>"
+```
+
+Fallback — если ничего из вышеперечисленного не сработало, сохрани что пользователь дал как `JIRA_PAT_TOKEN` и сделай любой `jira_search` чтобы проверить что auth работает.
 
 ## Configuration
 
