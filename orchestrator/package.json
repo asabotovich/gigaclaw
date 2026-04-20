@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "tsc",
     "clawfarm": "ts-node src/cli.ts"
   },
   "dependencies": {
