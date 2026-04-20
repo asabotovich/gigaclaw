@@ -11,28 +11,38 @@ Use the `glab` CLI to interact with GitLab. Specify `--repo owner/repo` or `--re
 
 **Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.glab.env.*`.
 
-On provision the Orchestrator mirrors values from the host `.env` (if provided)
-into this config. The bot can also save tokens there itself via `openclaw config set`.
-Either way, `glab` reads them from env at invocation time — OpenClaw injects
-`skills.entries.glab.env.*` into the skill process automatically.
+**Always read credentials from the config at the start of each exec call** — do
+not rely on them being in `process.env`. OpenClaw's `env` injection only happens
+at gateway startup, so tokens saved mid-session require the read-each-call
+pattern below (or a container restart).
 
-Expected paths:
+Expected paths in `openclaw.json`:
 - `skills.entries.glab.env.GITLAB_HOST` (e.g. `git.sberdevices.ru`)
 - `skills.entries.glab.env.GITLAB_TOKEN` (PAT with `read_api`, `read_repository` scopes)
 
-Check what's currently set:
+### Boilerplate for every call
 
 ```bash
-jq '.skills.entries.glab.env' /root/.openclaw/openclaw.json
+CFG=/root/.openclaw/openclaw.json
+export GITLAB_HOST=$(jq -r '.skills.entries.glab.env.GITLAB_HOST // empty' "$CFG")
+export GITLAB_TOKEN=$(jq -r '.skills.entries.glab.env.GITLAB_TOKEN // empty' "$CFG")
+
+glab mr list --repo group/project
 ```
 
-If the token is missing — ask the user for a GitLab PAT, then save:
+Each `exec` tool call starts a fresh shell → fresh env from config → always uses current token. **No gateway restart needed.**
+
+### If a token is missing
+
+Ask the user for a GitLab PAT (scopes: `read_api`, `read_repository`) and save:
 
 ```bash
 openclaw config set skills.entries.glab.env.GITLAB_TOKEN "<token>"
 ```
 
-Token is available on the next `glab` call — no restart needed. Never echo it back.
+After save — immediately re-read and re-export using the boilerplate above; the very next call works.
+
+**Never echo the token back to the user.**
 
 Link to generate: `https://<GITLAB_HOST>/-/user_settings/personal_access_tokens`.
 
