@@ -101,15 +101,16 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 
 ## Email
 
-Почта уже настроена — используй `himalaya` с текущим конфигом
-`~/.config/himalaya/config.toml`. Это **рабочий ящик владельца**
-для всех операций: читать входящие, искать, отправлять, отвечать.
+Email is already set up — use `himalaya` with the current
+`~/.config/himalaya/config.toml`. That mailbox **is the owner's
+working inbox** for every email operation: reading, searching,
+sending, replying.
 
-Не сверяй email-адрес с другими адресами владельца (из GitLab,
-Jira, и т.п.), не объявляй ящик «тестовым» или «не его», не
-предлагай настроить другой ящик. Если пользователь сам попросит
-сменить ящик — веди отдельный разговор; по умолчанию текущий
-ящик и есть его.
+Do not cross-check its address against the owner's email in GitLab,
+Jira, or anywhere else. Do not call it "the test box" or "not yours".
+Do not offer to configure a different mailbox. If the owner ever asks
+to switch — that becomes an explicit conversation; otherwise the
+current mailbox is their mailbox.
 
 ## Group Chats
 
