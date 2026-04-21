@@ -272,19 +272,19 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 
 ## Scheduling Tasks — Always Use OpenClaw Cron
 
-**Never use native Linux `cron`, `at`, or `sleep` loops for scheduling.** OpenClaw has a built-in scheduler that survives restarts, is visible in the dashboard, and can deliver results back to the chat.
+**Never use native Linux `cron`, `at`, or `sleep` loops.** OpenClaw's cron
+survives restarts, is visible in the dashboard, and can deliver results back
+to the chat. The container auto-pairs the in-container CLI at startup
+(`self-pair-cli`), so `openclaw cron add/list/rm` work out of the box.
 
-The container auto-pairs the in-container CLI with full operator scope at
-startup (`self-pair-cli` entrypoint hook), so `openclaw cron add/list/rm` and
-similar gateway-scoped commands work out of the box.
+### Pick a recipe by *where* the user asked
 
-### ⚠️ Always specify delivery — otherwise results vanish
+There are three places the user can ask from. Each has one correct recipe.
+Pick the right one, copy, fill in the `--name` / schedule / `--message`.
 
-When the user says "send me a fact every 10 minutes", the result must land
-**in their DM**. Without explicit `--announce --channel --to`, cron routes
-the output to the "main session" which the user does NOT see.
+#### (1) DM with the owner
 
-Before creating a cron job, resolve `OWNER_ID` from the MM username in config:
+Resolve the owner id once:
 
 ```bash
 MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
@@ -294,7 +294,7 @@ OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
   "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
 ```
 
-Then always create the job with `--announce --channel mattermost --to "user:$OWNER_ID"`:
+Then:
 
 ```bash
 openclaw cron add \
@@ -302,44 +302,38 @@ openclaw cron add \
   --every "10m" \
   --session isolated \
   --message "Find a random beaver fact from the web and return it as plain text." \
-  --announce \
-  --channel mattermost \
-  --to "user:$OWNER_ID"
+  --announce --channel mattermost --to "user:$OWNER_ID"
 ```
 
-If the cron should post to a channel (not a DM) — use `--to "channel:<channelId>"`,
-taking the channel id from the triggering message context.
+#### (2) Channel (top-level, not inside a thread)
 
-### If the user asks for a cron *inside a thread*
+Same recipe as DM, but target the channel. Take `<channelId>` from the
+triggering message context.
 
-Posting `--session isolated --to "channel:<id>"` from a thread drops
-every run into the channel root, not the thread. Not what the user
-asked for.
+```bash
+openclaw cron add \
+  --name "Cheese facts" \
+  --every "10m" \
+  --session isolated \
+  --message "Find a random cheese fact and return it in Russian." \
+  --announce --channel mattermost --to "channel:<channelId>"
+```
 
-`--session current` also doesn't work here: `openclaw cron add` runs
-in a shell subprocess (via `exec`) that has no handle on the active
-session, so OpenClaw silently falls back to `isolated`.
+#### (3) Inside a thread
 
-Workaround — bind the job to the thread's session key explicitly.
-
-**Step 1.** Call the `session_status` tool. Its output contains one
-line like this:
+**Step 1 — get the session key.** Call the `session_status` tool. Its output
+contains one line like this:
 
 ```
 🧵 Session: agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira • updated just now
 ```
 
-The part you need is everything **between `Session: ` and ` •`**.
-In this example that's:
+Take everything between `Session: ` and ` •`. That's your session key.
 
-```
-agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira
-```
-
-**Step 2.** Put that whole string after `session:` in the `--session`
-flag. Yes, `session:` appears twice — the outer one is the `--session`
-format prefix, the inner one is literally the first word of the
-session key. Don't normalize or rewrite either of them.
+**Step 2 — create the job.** Paste that key after `session:` in the
+`--session` flag. The double `session:` is correct (first is the flag
+prefix, second is literally the first word of the key — don't normalize).
+**No** `--announce / --channel / --to` — session routing handles delivery:
 
 ```bash
 openclaw cron add \
@@ -349,45 +343,15 @@ openclaw cron add \
   --message "Find a random beaver fact from the web and return it as plain text."
 ```
 
-No `--to`, no `--announce` — session routing carries the delivery
-back into the thread.
+If the key is rejected or runs still land in channel root, fall back to
+recipe (2) and tell the user: "cron posts will appear under the channel,
+not in the thread."
 
-**If it fails:** OpenClaw rejects the key or the job still lands in
-channel root → fall back to `--session isolated --announce --channel
-mattermost --to "channel:<channelId>"` and tell the user that cron
-posts will appear under the channel, not in the thread.
+### Schedule types (use with any recipe above)
 
-**For DMs** with the owner (not a thread), use the normal recipe:
-`--session isolated` + `--announce --channel mattermost --to "user:<ownerId>"`.
-
-### Recurring tasks with a cron expression
-
-```bash
-openclaw cron add \
-  --name "Daily standup summary" \
-  --cron "0 9 * * 1-5" \
-  --tz "Europe/Moscow" \
-  --session isolated \
-  --message "Check for updates and post a morning brief." \
-  --announce \
-  --channel mattermost \
-  --to "user:$OWNER_ID"
-```
-
-### One-time reminders
-
-One-shot jobs (`--at`) **delete themselves after running** — no cleanup needed.
-
-```bash
-openclaw cron add \
-  --name "Reminder: call" \
-  --at "30m" \
-  --session isolated \
-  --message "Remind the user about the call they mentioned." \
-  --announce \
-  --channel mattermost \
-  --to "user:$OWNER_ID"
-```
+- `--every "10m"` — repeat every fixed interval.
+- `--cron "0 9 * * 1-5" --tz "Europe/Moscow"` — cron expression with timezone.
+- `--at "30m"` — one-shot, auto-deletes after running.
 
 ### Managing jobs
 
@@ -397,14 +361,6 @@ openclaw cron run <job-id>          # trigger immediately
 openclaw cron rm <job-id>           # delete a job
 openclaw cron runs --id <job-id>    # view run history
 ```
-
-### Session targets
-
-| Target | When to use |
-|--------|-------------|
-| `main` | Short system events routed through heartbeat (low overhead) |
-| `isolated` | Full agent turn with delivery to a channel (background chores, reports) |
-| `current` | Bind to the session where the cron was created |
 
 ## Make It Yours
 
