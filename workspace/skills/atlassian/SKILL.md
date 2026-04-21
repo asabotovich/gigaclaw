@@ -70,88 +70,12 @@ After `config set` — immediately re-read and re-export using the boilerplate a
 
 **Never echo tokens back to the user, even partially.**
 
-## Setup walkthrough (use when user asks "настрой Jira" / "подключи Confluence")
+## First-time setup / token rotation
 
-Если хотя бы один из токенов пустой — веди пользователя пошагово по сервису.
-**Не дублируй сразу оба сервиса** — сначала Jira, потом Confluence (по просьбе).
-
-### Jira (Data Center)
-
-Сначала возьми URL из конфига:
-```bash
-JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' /root/.openclaw/openclaw.json)
-```
-
-Скажи в DM (подставив `$JIRA_URL`):
-
-> Открой в браузере свой профиль Jira:
-> **$JIRA_URL/secure/ViewProfile.jspa**
-> (войди если попросит).
->
-> Слева найди раздел **Personal Access Tokens** → нажми **Create token**.
->
-> В форме:
-> • Token Name: `gigaclaw` (любое)
-> • Expiry: **Never** (или максимум)
-> • Нажми **Create**.
->
-> Скопируй выданную строку (она длинная, начинается с цифр/букв) и пришли
-> её мне следующим сообщением.
-
-Когда пользователь прислал строку — сохрани:
-```bash
-openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<значение>"
-```
-
-И **сразу** sanity-check (используя boilerplate выше):
-```bash
-CFG=/root/.openclaw/openclaw.json
-export JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' "$CFG")
-export JIRA_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.JIRA_PAT_TOKEN // empty' "$CFG")
-export JIRA_SSL_VERIFY=true
-
-cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
-from scripts.jira_search import jira_search
-print(jira_search(jql='assignee = currentUser() ORDER BY updated DESC', limit=3, fields='key,summary,status'))
-"
-```
-
-Ответь пользователю:
-> ✅ Jira подключена. Нашёл твои задачи:
-> • AIDISRUPT-3 — …
-> …
-
-### Confluence
-
-Возьми URL из конфига:
-```bash
-CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' /root/.openclaw/openclaw.json)
-```
-
-Скажи в DM:
-
-> Открой **$CONFLUENCE_URL/plugins/personalaccesstokens/usertokens.action**
-> → **Create token** → Expiry: Never → **Create**.
->
-> Скопируй и пришли токен.
-
-Сохрани:
-```bash
-openclaw config set skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN "<значение>"
-```
-
-Sanity-check:
-```bash
-CFG=/root/.openclaw/openclaw.json
-export CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' "$CFG")
-export CONFLUENCE_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN // empty' "$CFG")
-export CONFLUENCE_SSL_VERIFY=true
-
-cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
-from scripts.confluence_spaces import confluence_list_spaces
-print(confluence_list_spaces(limit=5))
-"
-```
+If the required tokens are missing from the config, or the user is rotating a
+token, follow the detailed walkthrough in [SETUP.md](./SETUP.md). It covers
+PAT creation URLs, scope requirements, sanity checks, and common failure
+modes. Don't invent steps here — delegate to `SETUP.md`.
 
 ## Configuration
 
