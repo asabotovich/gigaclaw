@@ -11,7 +11,13 @@
 
 # --- Values from .env (per-user credentials + platform settings) ---
 
-  .channels.mattermost.enabled       = true
+# Mattermost self-attach is OFF: containers do not open a WebSocket of their
+# own. All inbound MM traffic goes through the vibe-projects orchestrator,
+# which forwards to /v1/responses. The fields below (botToken, baseUrl) stay
+# populated because workspace scripts (BOOT.md, AGENTS.md cron recipes,
+# skills/mattermost/SKILL.md) read them directly with jq to call the MM REST
+# API from inside the container.
+  .channels.mattermost.enabled       = false
 | .channels.mattermost.botToken      = env.MM_BOT_TOKEN
 | .channels.mattermost.baseUrl       = env.MM_BASE_URL
 | .channels.mattermost.dmPolicy      = "allowlist"
@@ -41,6 +47,9 @@
 | .gateway.bind                                         = "lan"
 | .gateway.auth.mode                                    = "token"
 | .gateway.auth.token                                   = env.OPENCLAW_GATEWAY_TOKEN
+# Orchestrator forwards inbound messages to this endpoint; must be enabled
+# even when channels.mattermost.enabled = false.
+| .gateway.http.endpoints.responses.enabled             = true
 | .gateway.controlUi.allowedOrigins                     = [
     "http://127.0.0.1:18789",
     "http://localhost:18789",
