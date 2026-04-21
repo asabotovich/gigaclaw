@@ -305,10 +305,16 @@ openclaw cron add \
   --announce --channel mattermost --to "user:$OWNER_ID"
 ```
 
-#### (2) Channel (top-level, not inside a thread)
+#### (2) Channel root — only when the user explicitly asked for it
 
-Same recipe as DM, but target the channel. Take `<channelId>` from the
-triggering message context.
+Use this recipe **only** when the user said something like «в канал»,
+«в общий чат», «пусть все видят», «post to #general». If the user just
+happens to be in a channel (or in a thread inside it) and didn't
+specifically ask for channel-root posting — use recipe (1) or (3)
+instead. Default: cron posts never belong in the channel root.
+
+When you do use it, take `<channelId>` from the triggering message
+context.
 
 ```bash
 openclaw cron add \
@@ -343,9 +349,9 @@ openclaw cron add \
   --message "Find a random beaver fact from the web and return it as plain text."
 ```
 
-If the key is rejected or runs still land in channel root, fall back to
-recipe (2) and tell the user: "cron posts will appear under the channel,
-not in the thread."
+If the key is rejected or runs still land in channel root, don't pick
+a target silently — ask the user: «не получилось привязать к треду —
+слать в DM или в канал?» and use recipe (1) or (2) per their answer.
 
 ### Schedule types (use with any recipe above)
 
