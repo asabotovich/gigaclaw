@@ -25,9 +25,16 @@
 | .models.mode                                  = "replace"
 | .models.providers.openrouter.baseUrl          = "https://openrouter.ai/api/v1"
 | .models.providers.openrouter.apiKey           = env.OPENROUTER_API_KEY
-| .models.providers.openrouter.models           = [{id: env.LLM_MODEL, name: env.LLM_MODEL}]
+| .models.providers.openrouter.models           = [
+    {id: env.LLM_MODEL,        name: env.LLM_MODEL},
+    {id: env.LLM_VISION_MODEL, name: env.LLM_VISION_MODEL}
+  ]
 | .agents.defaults.model.primary                = ("openrouter/" + env.LLM_MODEL)
-| .agents.defaults.models                       = {("openrouter/" + env.LLM_MODEL): {alias: env.LLM_MODEL}}
+| .agents.defaults.models                       = {
+    ("openrouter/" + env.LLM_MODEL):        {alias: env.LLM_MODEL},
+    ("openrouter/" + env.LLM_VISION_MODEL): {alias: env.LLM_VISION_MODEL}
+  }
+| .agents.defaults.imageModel.primary           = ("openrouter/" + env.LLM_VISION_MODEL)
 
 | .gateway.port                                         = 18789
 | .gateway.mode                                         = "local"
@@ -53,6 +60,7 @@
 
 | .session.dmScope                        = "per-channel-peer"
 | .agents.defaults.workspace              = "/root/.openclaw/workspace"
+| .agents.defaults.skipBootstrap          = true
 | .agents.defaults.userTimezone           = "Europe/Moscow"
 | .agents.defaults.envelopeTimezone       = "Europe/Moscow"
 | .agents.defaults.compaction.mode        = "safeguard"

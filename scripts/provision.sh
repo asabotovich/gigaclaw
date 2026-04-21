@@ -26,7 +26,11 @@ envsubst "$ALLOW" < "$TPL/TOOLS.md"  > "$WS/TOOLS.md"
 # mount and wouldn't survive the exit of this one-shot provision container.
 
 # --- User data: seed once, never overwrite ---
+# SOUL.md is seeded like USER.md — per OpenClaw guidance it's "the agent's to
+# evolve". If the agent or owner tweaked it mid-session, a container rebuild
+# must not wipe those edits.
 [ -f "$WS/USER.md" ] || envsubst "$ALLOW" < "$TPL/USER.md" > "$WS/USER.md"
+[ -f "$WS/SOUL.md" ] || cp "$TPL/SOUL.md" "$WS/SOUL.md"
 
 # --- BOOT.md: always overwrite. Triggers on gateway startup via boot-md hook.
 #     Content changes between releases must take effect immediately on reset,

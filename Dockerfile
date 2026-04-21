@@ -50,6 +50,7 @@ COPY configs/patches.jq               /opt/gigaclaw/patches.jq
 COPY configs/himalaya-config.toml.tpl /opt/gigaclaw/templates/himalaya-config.toml
 COPY workspace/AGENTS.md              /opt/gigaclaw/templates/AGENTS.md
 COPY workspace/TOOLS.md               /opt/gigaclaw/templates/TOOLS.md
+COPY workspace/SOUL.md                /opt/gigaclaw/templates/SOUL.md
 COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
 COPY workspace/BOOT.md                /opt/gigaclaw/templates/BOOT.md
 COPY workspace/skills                 /opt/gigaclaw/skills
