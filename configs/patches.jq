@@ -27,7 +27,7 @@
 | .models.providers.openrouter.apiKey           = env.OPENROUTER_API_KEY
 | .models.providers.openrouter.models           = [
     {id: env.LLM_MODEL,        name: env.LLM_MODEL},
-    {id: env.LLM_VISION_MODEL, name: env.LLM_VISION_MODEL}
+    {id: env.LLM_VISION_MODEL, name: env.LLM_VISION_MODEL, input: ["text", "image"]}
   ]
 | .agents.defaults.model.primary                = ("openrouter/" + env.LLM_MODEL)
 | .agents.defaults.models                       = {
