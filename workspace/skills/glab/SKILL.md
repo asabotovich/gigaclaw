@@ -44,49 +44,12 @@ After save — immediately re-read and re-export using the boilerplate above; th
 
 **Never echo the token back to the user.**
 
-## Setup walkthrough (use when user asks "настрой GitLab" / "подключи git")
+## First-time setup / token rotation
 
-Если `GITLAB_TOKEN` пустой — веди пользователя пошагово:
-
-Возьми URL из конфига:
-```bash
-GITLAB_HOST=$(jq -r '.skills.entries.glab.env.GITLAB_HOST // empty' /root/.openclaw/openclaw.json)
-```
-
-Скажи в DM (подставив `$GITLAB_HOST`):
-
-> Открой **https://$GITLAB_HOST/-/user_settings/personal_access_tokens**
-> (войди если попросит).
->
-> Создай новый токен:
-> • **Token name:** `gigaclaw`
-> • **Expiration date:** ставь максимум (обычно 1 год)
-> • **Scopes:** обязательно `read_api`, `read_repository`
->   (если хочешь, чтобы бот мог ещё править MR — добавь `api` и `write_repository`,
->   это опционально; для старта хватит read)
-> • Нажми **Create personal access token**
->
-> Скопируй токен **сразу** (GitLab показывает его один раз) и пришли мне.
-
-Когда пользователь прислал — сохрани:
-```bash
-openclaw config set skills.entries.glab.env.GITLAB_TOKEN "<токен>"
-```
-
-Sanity-check (используя boilerplate выше):
-```bash
-CFG=/root/.openclaw/openclaw.json
-export GITLAB_HOST=$(jq -r '.skills.entries.glab.env.GITLAB_HOST // empty' "$CFG")
-export GITLAB_TOKEN=$(jq -r '.skills.entries.glab.env.GITLAB_TOKEN // empty' "$CFG")
-
-glab auth status          # должно показать "Logged in to ..."
-glab api user             # должно показать твой профиль
-```
-
-Ответь:
-> ✅ GitLab подключён. Ты — `<username>`. Готов искать MR, issues, читать файлы.
-
-Link to generate: `https://<GITLAB_HOST>/-/user_settings/personal_access_tokens`.
+If `GITLAB_TOKEN` is missing from the config, or the user is rotating it,
+follow the detailed walkthrough in [SETUP.md](./SETUP.md). It covers PAT
+creation, scope choice, sanity checks, and common failure modes. Don't
+invent steps here — delegate to `SETUP.md`.
 
 ## Merge Requests
 
