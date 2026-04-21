@@ -312,37 +312,53 @@ taking the channel id from the triggering message context.
 
 ### If the user asks for a cron *inside a thread*
 
-Using `--session isolated --to "channel:<id>"` posts every run to the
-channel **root**, not the thread. That's almost never what the user
-wants when they asked for the reminder from within a thread.
+Posting `--session isolated --to "channel:<id>"` from a thread drops
+every run into the channel root, not the thread. Not what the user
+asked for.
 
-`--session current` **does not work** when cron is created via the
-`exec` shell tool: the CLI runs in a separate process and has no way
-to resolve "current". OpenClaw silently falls back to `isolated`, and
-the job lands in channel root anyway.
+`--session current` also doesn't work here: `openclaw cron add` runs
+in a shell subprocess (via `exec`) that has no handle on the active
+session, so OpenClaw silently falls back to `isolated`.
 
-Workaround — bind the job to the current session key explicitly:
+Workaround — bind the job to the thread's session key explicitly.
 
-1. Call the `session_status` tool. In its output look for the line:
-   ```
-   🧵 Session: agent:main:mattermost:group:<CH>:thread:<TID> • updated just now
-   ```
-   Grab the full key after `Session:`.
-2. Pass it to cron with the `session:` prefix:
+**Step 1.** Call the `session_status` tool. Its output contains one
+line like this:
+
+```
+🧵 Session: agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira • updated just now
+```
+
+The part you need is everything **between `Session: ` and ` •`**.
+In this example that's:
+
+```
+agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira
+```
+
+**Step 2.** Put that whole string after `session:` in the `--session`
+flag. Yes, `session:` appears twice — the outer one is the `--session`
+format prefix, the inner one is literally the first word of the
+session key. Don't normalize or rewrite either of them.
 
 ```bash
 openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
-  --session "session:agent:main:mattermost:group:<CH>:thread:<TID>" \
+  --session "session:agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira" \
   --message "Find a random beaver fact from the web and return it as plain text."
 ```
 
-No `--to` needed — delivery follows the session routing back into the
-thread.
+No `--to`, no `--announce` — session routing carries the delivery
+back into the thread.
 
-For DMs with the owner, `--session isolated` + `--to user:<id>`
-remains the norm.
+**If it fails:** OpenClaw rejects the key or the job still lands in
+channel root → fall back to `--session isolated --announce --channel
+mattermost --to "channel:<channelId>"` and tell the user that cron
+posts will appear under the channel, not in the thread.
+
+**For DMs** with the owner (not a thread), use the normal recipe:
+`--session isolated` + `--announce --channel mattermost --to "user:<ownerId>"`.
 
 ### Recurring tasks with a cron expression
 
