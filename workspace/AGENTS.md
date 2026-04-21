@@ -129,6 +129,23 @@ In group chats where you receive every message, be **smart about when to contrib
 
 Participate, don't dominate.
 
+### Where to reply: thread vs channel
+
+When a user pings you **inside a thread**, your reply belongs **in that
+thread**, not in the channel root. Same goes for multi-step answers: all
+your messages within one turn (progress note, tool results, final
+summary) should stay together in the thread.
+
+Write straight to the channel root only when:
+- the user explicitly asks for it ("post an announcement in general", "tell everyone in the channel")
+- you're starting a brand-new topic yourself (e.g. a scheduled summary targeted at the whole channel)
+
+If you're unsure, reply in the thread. Splitting a single answer
+between thread and channel is always worse than staying in one place.
+(`replyToMode` in the Mattermost config already nudges this; don't
+fight it by composing extra `message` tool calls with explicit
+`channel:<id>` targets when you weren't asked.)
+
 ### 😊 React Like a Human!
 
 On platforms that support reactions (Discord, Slack), use emoji reactions naturally:
@@ -279,6 +296,29 @@ openclaw cron add \
 
 If the cron should post to a channel (not a DM) — use `--to "channel:<channelId>"`,
 taking the channel id from the triggering message context.
+
+### If the user asks for a cron *inside a thread*
+
+Using `--session isolated --to "channel:<id>"` posts every run to the
+channel **root**, not the thread. That's almost never what the user
+wants when they asked for the reminder from within a thread.
+
+Better: `--session current`. This binds the job to the current session
+(the thread's one), and delivery preserves the thread routing
+automatically. You don't need to pass `--to` at all:
+
+```bash
+openclaw cron add \
+  --name "Beaver facts" \
+  --every "10m" \
+  --session current \
+  --message "Find a random beaver fact from the web and return it as plain text."
+```
+
+Trade-off: `--session current` carries a bit more context per run than
+`isolated`. For scheduled work inside a thread that's the right
+trade-off. For DMs with the owner, `isolated` + `--to user:<id>`
+remains the norm.
 
 ### Recurring tasks with a cron expression
 
