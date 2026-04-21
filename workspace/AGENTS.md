@@ -277,14 +277,40 @@ survives restarts, is visible in the dashboard, and can deliver results back
 to the chat. The container auto-pairs the in-container CLI at startup
 (`self-pair-cli`), so `openclaw cron add/list/rm` work out of the box.
 
+### Delivery: never `--announce --channel mattermost`
+
+This container runs with `channels.mattermost.enabled = false` — the MM
+plugin is **not loaded**. `--announce --channel mattermost --to ...` is
+silently dropped: the job runs, but the result never reaches the user.
+
+Outbound to Mattermost goes through the **orchestrator push endpoint**:
+
+```
+POST $ORCHESTRATOR_URL/push
+Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET
+Content-Type: application/json
+{"channel_id": "...", "root_id": "...optional...", "message": "..."}
+```
+
+`$ORCHESTRATOR_URL` and `$ORCHESTRATOR_PUSH_SECRET` are injected into the
+container environment by the host `.env`. Reference them as shell variables.
+
+The pattern for every cron job is the same:
+
+1. `--session isolated --no-deliver` — run the work in its own context,
+   disable cron's built-in delivery (we do our own).
+2. In `--message`, tell the agent what to produce, then call curl against
+   `/push` with the right channel/thread.
+
 ### Pick a recipe by *where* the user asked
 
 There are three places the user can ask from. Each has one correct recipe.
-Pick the right one, copy, fill in the `--name` / schedule / `--message`.
+Pick the right one, fill in `<channelId>` / `<rootId>` / the task text.
 
 #### (1) DM with the owner
 
-Resolve the owner id once:
+Resolve the owner's DM channel id once (it's the channel you post to, not
+the owner's user id):
 
 ```bash
 MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
@@ -292,6 +318,12 @@ MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
 OWNER_USERNAME=$(jq -r '.channels.mattermost.allowFrom[0]' /root/.openclaw/openclaw.json)
 OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
   "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
+BOT_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  "$MM_URL/api/v4/users/me" | jq -r '.id')
+DM_CHANNEL_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "[\"$BOT_ID\",\"$OWNER_ID\"]" \
+  "$MM_URL/api/v4/channels/direct" | jq -r '.id')
 ```
 
 Then:
@@ -301,57 +333,45 @@ openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
   --session isolated \
-  --message "Find a random beaver fact from the web and return it as plain text." \
-  --announce --channel mattermost --to "user:$OWNER_ID"
+  --no-deliver \
+  --message "Find a random beaver fact from the web (short, plain text in Russian). Then deliver it: curl -sf -X POST \"\$ORCHESTRATOR_URL/push\" -H \"Authorization: Bearer \$ORCHESTRATOR_PUSH_SECRET\" -H 'Content-Type: application/json' --data \"\$(jq -n --arg msg \"<FACT>\" '{channel_id:\"$DM_CHANNEL_ID\",message:\$msg}')\""
 ```
+
+The agent substitutes `<FACT>` with its own result before running curl.
 
 #### (2) Channel root — only when the user explicitly asked for it
 
-Use this recipe **only** when the user said something like «в канал»,
-«в общий чат», «пусть все видят», «post to #general». If the user just
-happens to be in a channel (or in a thread inside it) and didn't
-specifically ask for channel-root posting — use recipe (1) or (3)
-instead. Default: cron posts never belong in the channel root.
-
-When you do use it, take `<channelId>` from the triggering message
-context.
+Use this recipe **only** if the user said «в канал», «в общий чат», «пусть
+все видят», «post to #general», or similar. Being-in-a-channel by itself is
+not an invitation. Take `<channelId>` from the triggering message.
 
 ```bash
 openclaw cron add \
   --name "Cheese facts" \
   --every "10m" \
   --session isolated \
-  --message "Find a random cheese fact and return it in Russian." \
-  --announce --channel mattermost --to "channel:<channelId>"
+  --no-deliver \
+  --message "Find a random cheese fact (short, plain text in Russian). Then deliver it: curl -sf -X POST \"\$ORCHESTRATOR_URL/push\" -H \"Authorization: Bearer \$ORCHESTRATOR_PUSH_SECRET\" -H 'Content-Type: application/json' --data \"\$(jq -n --arg msg \"<FACT>\" '{channel_id:\"<channelId>\",message:\$msg}')\""
 ```
 
 #### (3) Inside a thread
 
-**Step 1 — get the session key.** Call the `session_status` tool. Its output
-contains one line like this:
-
-```
-🧵 Session: agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira • updated just now
-```
-
-Take everything between `Session: ` and ` •`. That's your session key.
-
-**Step 2 — create the job.** Paste that key after `session:` in the
-`--session` flag. The double `session:` is correct (first is the flag
-prefix, second is literally the first word of the key — don't normalize).
-**No** `--announce / --channel / --to` — session routing handles delivery:
+Same as (2), plus `root_id`. `<channelId>` and `<rootId>` берём из контекста
+треда, откуда пришёл запрос.
 
 ```bash
 openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
-  --session "session:agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira" \
-  --message "Find a random beaver fact from the web and return it as plain text."
+  --session isolated \
+  --no-deliver \
+  --message "Find a random beaver fact (short, plain text in Russian). Then deliver it: curl -sf -X POST \"\$ORCHESTRATOR_URL/push\" -H \"Authorization: Bearer \$ORCHESTRATOR_PUSH_SECRET\" -H 'Content-Type: application/json' --data \"\$(jq -n --arg msg \"<FACT>\" '{channel_id:\"<channelId>\",root_id:\"<rootId>\",message:\$msg}')\""
 ```
 
-If the key is rejected or runs still land in channel root, don't pick
-a target silently — ask the user: «не получилось привязать к треду —
-слать в DM или в канал?» and use recipe (1) or (2) per their answer.
+Why not `--session session:<thread-key>`? Because delivery here doesn't ride
+on session routing (the MM plugin is off). The agent posts to `/push`
+explicitly with the right `channel_id`/`root_id`. `--session isolated
+--no-deliver` keeps the run self-contained.
 
 ### Schedule types (use with any recipe above)
 

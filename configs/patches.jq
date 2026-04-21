@@ -26,7 +26,6 @@
 | .channels.mattermost.groupAllowFrom = [env.ADMIN_USERNAME]
 | .channels.mattermost.dangerouslyAllowNameMatching = true
 | .channels.mattermost.chatmode      = "oncall"
-| .channels.mattermost.replyToMode   = "all"
 
 | .models.mode                                  = "replace"
 | .models.providers.openrouter.baseUrl          = "https://openrouter.ai/api/v1"
