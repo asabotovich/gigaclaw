@@ -55,6 +55,11 @@ COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
 COPY workspace/BOOT.md                /opt/gigaclaw/templates/BOOT.md
 COPY workspace/skills                 /opt/gigaclaw/skills
 
+# Custom OpenClaw channel plugin that bridges outbound messages to the
+# gigaclaw-orchestrator /push endpoint. See plugins.load.paths in patches.jq.
+COPY packages/openclaw-orchestrator-channel /opt/gigaclaw/extensions/orchestrator-channel
+RUN cd /opt/gigaclaw/extensions/orchestrator-channel && npm install --omit=dev --no-audit --no-fund
+
 COPY scripts/provision.sh    /usr/local/bin/provision
 COPY scripts/entrypoint.sh   /usr/local/bin/entrypoint
 COPY scripts/self-pair-cli.sh /usr/local/bin/self-pair-cli

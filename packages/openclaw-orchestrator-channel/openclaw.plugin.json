@@ -1,0 +1,22 @@
+{
+  "id": "orchestrator",
+  "kind": "channel",
+  "channels": ["orchestrator"],
+  "name": "GigaClaw Orchestrator",
+  "description": "Outbound bridge to the gigaclaw-orchestrator /push endpoint. Does not open any inbound connection — inbound arrives via /v1/responses from the orchestrator itself.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "orchestrator": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled":    { "type": "boolean" },
+          "pushUrl":    { "type": "string", "format": "uri" },
+          "pushSecret": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
