@@ -2,15 +2,18 @@
 // native Mattermost session-key shape — so agents can take a key from
 // session_status output and paste it straight into --to.
 //
-// Accepted shapes:
+// Accepted shapes (all equivalent once normalized):
 //
-//   agent:<agentId>:mattermost:<user_id>                   → DM
-//   agent:<agentId>:mattermost:group:<channel_id>          → private group (G)
-//   agent:<agentId>:mattermost:channel:<channel_id>        → open/private channel (O|P)
+//   mattermost:direct:<user_id>                            → DM
+//   mattermost:<user_id>                                   → DM (legacy, 26-char id inferred)
+//   mattermost:group:<channel_id>                          → private group (G)
+//   mattermost:channel:<channel_id>                        → open/private channel (O|P)
 //   ... any of the above + ":thread:<root_id>"             → thread suffix
 //
-// The "agent:<agentId>:" prefix is stripped; raw targets without it
-// (just "mattermost:group:<id>") are also accepted.
+// An optional "agent:<agentId>:" prefix is stripped, so full session keys
+// like "agent:main:mattermost:direct:<id>" also work. Inside the container
+// the canonical form to use is `mattermost:direct:$ADMIN_USER_ID` for DMs
+// to the container's owner.
 
 export type ParsedTargetKind = "direct" | "group" | "channel"
 
@@ -50,13 +53,17 @@ export function parseTarget(raw: string): ParsedTarget {
 
     let kind: ParsedTargetKind
     let id: string
-    if (body.startsWith("group:")) {
+    if (body.startsWith("direct:")) {
+        kind = "direct"
+        id = body.slice("direct:".length)
+    } else if (body.startsWith("group:")) {
         kind = "group"
         id = body.slice("group:".length)
     } else if (body.startsWith("channel:")) {
         kind = "channel"
         id = body.slice("channel:".length)
     } else {
+        // Back-compat: bare body is a user id for DM.
         kind = "direct"
         id = body
     }

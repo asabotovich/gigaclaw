@@ -44,16 +44,20 @@ jq '.skills.entries | to_entries | map({skill: .key, env: (.value.env // {})})' 
 
 ## Как отправить DM владельцу
 
-`message` tool не принимает `@username`. Нужен Mattermost user ID:
+Пиши через канал `orchestrator`. MM user id владельца уже лежит в env как
+`$ADMIN_USER_ID` — не надо идти в MM за ним:
 
 ```bash
-MM_TOKEN="$MM_BOT_TOKEN"
-MM_URL="$MM_BASE_URL"
-OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/username/${ADMIN_USERNAME}" | jq -r '.id')
+openclaw message \
+  --channel orchestrator \
+  --to "mattermost:direct:$ADMIN_USER_ID" \
+  -m "Привет! ..."
 ```
 
-Потом в `message(action="send", to="user:$OWNER_ID", ...)`.
+Формат target — только `mattermost:direct:<user_id>` для DM (или
+`mattermost:channel:<channel_id>` для канала, `:thread:<root_post_id>` в
+конце для ответа в тред). Никаких `@username`, `user:<id>`, голых id —
+они не резолвятся этим каналом.
 
 ## Шаг 3 — Нужна настройка → представься и предложи
 
