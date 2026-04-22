@@ -1,32 +1,44 @@
 # GigaClaw Agent — руководство по развёртыванию
 
-AI-ассистент для Mattermost на базе OpenClaw + OpenRouter. Per-user контейнеры, управление через TS CLI (`clawfarm`), который напрямую вызывает Docker API (прото для будущего Orchestrator, см. `.claude/docs/gigaclaw-roadmap.md`).
+AI-ассистент для Mattermost на базе OpenClaw + OpenRouter. Один контейнер
+на пользователя, один общий Mattermost-бот.
 
 ## Архитектура
 
 ```
 Host (VM или ноутбук)
 ├── Docker daemon
-│   └── контейнер gigaclaw-<username>   ← один на пользователя
+│   └── контейнер gigaclaw-<username>     ← один на пользователя
 │       ├── openclaw gateway :18789
 │       ├── шаблоны + скиллы запечены в образ (/opt/gigaclaw/)
-│       └── workspace: bind mount /data/users/<username>/  → /root/.openclaw/
-└── orchestrator/          ← TS CLI (dockerode), аналог будущего Orchestrator
-    clawfarm add-user / list / logs / reset / remove
+│       ├── кастомный channel-плагин: /opt/gigaclaw/extensions/orchestrator-channel
+│       └── workspace: bind mount /data/users/<username>/ → /root/.openclaw/
+└── gigaclaw-orchestrator                  ← отдельный сервис
+    (см. vibe-projects/services/gigaclaw-orchestrator)
+    ├── MM WebSocket (один shared bot-токен)
+    ├── маппит sender → контейнер по label gigaclaw.user=<name>
+    ├── форвард /v1/responses с session-key в формате native MM
+    ├── POST /push — outbound от контейнеров
+    └── SQLite: пользователи + apply-requests + admin-команды
 ```
 
-Скиллы в образе: `mattermost`, `atlassian` (Jira + Confluence через PAT), `glab` (GitLab CLI), `himalaya` (IMAP/SMTP), `gog` (Google Workspace).
+Контейнер сам **не подключается** к Mattermost: `channels.mattermost.enabled = false`,
+бот-плагин не загружен. Весь inbound идёт через оркестратор, весь outbound —
+через кастомный channel-плагин `orchestrator` → `/push` оркестратора.
+
+Скиллы в образе: `mattermost` (REST утилиты), `atlassian` (Jira + Confluence
+через PAT), `glab` (GitLab CLI), `himalaya` (IMAP/SMTP), `gog` (Google
+Workspace).
 
 ## Требования
 
 - Docker 20+
-- Node.js 18+ (для CLI)
-- Mattermost bot token
+- Node.js 22+ (для оркестратора)
+- Mattermost bot token (один shared для всего стенда)
 - OpenRouter API-ключ (LLM + web search)
+- Запущенный `gigaclaw-orchestrator`
 
-## Установка
-
-### 1. Собрать образ (один раз)
+## 1. Собрать образ (один раз)
 
 ```bash
 git clone <repo>
@@ -34,133 +46,66 @@ cd gigaclaw
 docker build -t gigaclaw:latest .
 ```
 
-В образ запекаются: OpenClaw, himalaya, gog, glab, python-зависимости для atlassian, шаблоны (`configs/`, `workspace/AGENTS.md`, `workspace/TOOLS.md`, `workspace/USER.md.tpl`), все скиллы (`workspace/skills/`).
+В образ запекаются: OpenClaw, `himalaya`, `gog`, `glab`, python-зависимости
+для atlassian, шаблоны (`configs/`, `workspace/AGENTS.md`, `workspace/TOOLS.md`,
+`workspace/USER.md.tpl`, `workspace/SOUL.md`, `workspace/BOOT.md`), все скиллы
+(`workspace/skills/`), а также кастомный channel-плагин `orchestrator`
+(`packages/openclaw-orchestrator-channel/`) с pre-built `dist/`.
 
-### 2. Подготовить `.env` для пользователя
+## 2. Поднять оркестратор
 
-```bash
-cp .env.example .env.asabotovich
-# заполнить токены
-```
+См. `vibe-projects/services/gigaclaw-orchestrator/README.md` — там админ-
+команды `/apply` / `/admin approve` через MM сами создают `.env.<user>` из
+шаблона, вызывают Docker API и регистрируют пользователя.
+
+Orchestrator ждёт в `USERS_ENV_DIR` эталонный `.env.template` — оттуда
+копируется per-user `.env.<username>` на approve и патчится
+`ADMIN_USERNAME` + `ADMIN_NAME`.
+
+## 3. Эталонный `.env.template` для пользователей
+
+Скопировать `.env.example` в `USERS_ENV_DIR/.env.template` и заполнить
+shared-поля (токены, URL-ы, настройки моделей). На approve оркестратор
+сделает per-user копию и подставит `ADMIN_USERNAME` + `ADMIN_NAME`.
 
 Переменные:
 
 | Переменная | Описание |
 |---|---|
-| `MM_BOT_TOKEN` | Токен бота в Mattermost |
-| `MM_BASE_URL` | URL сервера Mattermost |
-| `OPENROUTER_API_KEY` | OpenRouter API-ключ (LLM + Perplexity web search) |
-| `LLM_MODEL` | Модель OpenRouter (например `z-ai/glm-4.7`) |
-| `ADMIN_NAME` | Имя владельца (для `USER.md`) |
-| `ADMIN_USERNAME` | Mattermost login владельца (используется в allowlist) |
-| `OPENCLAW_GATEWAY_TOKEN` | Токен доступа к Dashboard (`openssl rand -hex 32`) |
-| `PUBLIC_ORIGIN` | URL дашборда без слэша (например `http://46.243.142.210`) |
-| `CONTROL_UI_DISABLE_DEVICE_AUTH` | `true` только если дашборд по HTTP с публичного IP |
-| `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `IMAP_HOST`, `SMTP_HOST` | himalaya (email) |
-| `JIRA_URL`, `JIRA_PAT_TOKEN` | корп. Jira (если есть доступ) |
-| `CONFLUENCE_URL`, `CONFLUENCE_PAT_TOKEN` | корп. Confluence |
-| `GITLAB_HOST`, `GITLAB_TOKEN` | корп. GitLab (scopes: `read_api`, `read_repository`) |
-| `GOG_KEYRING_PASSWORD`, `GOG_ACCOUNT` | Google Workspace (см. ниже) |
-
-### 3. Установить CLI (один раз)
-
-```bash
-cd orchestrator
-npm install
-npm link                     # создаст /usr/local/bin/clawfarm → ./bin/clawfarm.js
-```
-
-Теперь команда `clawfarm` доступна глобально из любой директории. После `git pull`
-пересобирать ничего не надо — shim fallback'ится на `ts-node` и подхватывает свежий код.
-
-Без `npm link` можно использовать `clawfarm <...>` из `orchestrator/`.
-
-**Автодополнение в zsh** (опционально, но приятно):
-
-```bash
-# Добавь эти две строки в ~/.zshrc, подставь реальный путь к репо:
-echo "fpath=($PWD/completions \$fpath)" >> ~/.zshrc
-echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
-source ~/.zshrc
-```
-
-После этого: `clawfarm <TAB>` выдаёт список команд, `clawfarm logs <TAB>` —
-список активных пользователей (из docker labels), `--env <TAB>` — `.env*` файлы.
-
-### 4. Поднять бота
-
-```bash
-clawfarm add-user asabotovich --env ../.env.asabotovich
-```
-
-`add-user` делает:
-1. **provision** — one-shot контейнер, `envsubst`-ом рендерит шаблоны из образа в `/data/users/<username>/`
-2. **create + start** — runtime-контейнер с bind mount на ту же директорию, env из `.env`
-
-## Управление
-
-```bash
-cd orchestrator
-
-# Список всех ботов
-clawfarm list
-
-# Логи
-clawfarm logs asabotovich -f
-
-# Остановить / запустить (данные сохраняются)
-clawfarm stop asabotovich
-clawfarm start asabotovich
-
-# Пересоздать контейнер (после смены токена или обновления образа)
-#   workspace/ переживает reset — только AGENTS.md/TOOLS.md перезаписываются,
-#   USER.md и memory/ остаются
-clawfarm reset asabotovich --env ../.env.asabotovich
-
-# Удалить бота (контейнер)
-clawfarm remove asabotovich
-#   директория /data/users/asabotovich/ остаётся — очистить вручную если нужно
-```
-
-### Массовый апгрейд образа
-
-Для обновления **всех** пользователей на новую версию образа есть хелпер в корне репозитория:
-
-```bash
-# Пересобрать и обновить всех на свежий gigaclaw:latest
-docker build -t gigaclaw:latest .
-./upgrade.sh
-
-# Или указать конкретный тег из registry
-docker pull registry/gigaclaw:v1.2.3
-./upgrade.sh registry/gigaclaw:v1.2.3
-```
-
-Скрипт проходит по всем контейнерам с меткой `gigaclaw.user=<name>` и для каждого
-делает `clawfarm reset <user> --env ../.env.<user>`. Данные (`memory/`, `agents/`,
-`openclaw.json` с токенами) переживают пересоздание. Это прото того, что в проде
-станет `POST /admin/upgrade` из Orchestrator (роадмап, задача 6.1).
-
-### Переменные окружения CLI
-
-| Переменная | Дефолт | Для чего |
-|---|---|---|
-| `GIGACLAW_IMAGE` | `gigaclaw:latest` | Docker image tag |
-| `GIGACLAW_DATA_ROOT` | `/data/users` | Где хранить per-user данные на хосте |
-| `GIGACLAW_BASE_PORT` | `18789` | Стартовый порт для выдачи контейнерам |
+| `MM_BOT_TOKEN` | Токен shared MM-бота. Скиллы внутри контейнера используют его для REST-запросов к MM. |
+| `MM_BASE_URL` | URL сервера Mattermost. |
+| `OPENROUTER_API_KEY` | OpenRouter API-ключ (LLM + Perplexity web search). |
+| `LLM_MODEL` | Модель OpenRouter для текста (например `z-ai/glm-4.7`). |
+| `LLM_VISION_MODEL` | Модель OpenRouter для картинок (например `qwen/qwen3-vl-32b-instruct`). |
+| `ADMIN_NAME`, `ADMIN_USERNAME` | Проставляются оркестратором на approve, в шаблоне не задавать. |
+| `OPENCLAW_GATEWAY_TOKEN` | Shared токен доступа к OpenClaw Gateway (одинаковый у всех контейнеров — его же использует оркестратор для форварда в `/v1/responses`). |
+| `PUBLIC_ORIGIN` | URL дашборда без слэша. |
+| `CONTROL_UI_DISABLE_DEVICE_AUTH` | `true` только если дашборд по HTTP с публичного IP. |
+| `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `IMAP_HOST`, `SMTP_HOST` | himalaya (email). |
+| `JIRA_URL`, `CONFLUENCE_URL`, `GITLAB_HOST` | Корп. хосты (shared). |
+| `JIRA_PAT_TOKEN` / `CONFLUENCE_PAT_TOKEN` / `GITLAB_TOKEN` | Оставить пустыми в шаблоне — бот сам попросит у пользователя через onboarding. |
+| `GOG_KEYRING_PASSWORD`, `GOG_ACCOUNT` | Google Workspace (см. ниже). |
+| `ORCHESTRATOR_URL` | Куда контейнер POST-ит outbound (например `http://host.docker.internal:18790`). |
+| `ORCHESTRATOR_PUSH_SECRET` | Shared bearer, совпадает с `PUSH_SECRET` оркестратора. |
 
 ## Dashboard (опционально)
 
-Каждый контейнер открывает OpenClaw Control UI на своём host-порту (посмотреть — `clawfarm list`).
+Каждый контейнер открывает OpenClaw Control UI на своём host-порту. Порт
+выдаёт оркестратор, посмотреть — `docker ps --filter label=gigaclaw.user`
+или через админ-команду оркестратора (когда появится `/admin list`).
 
-**Auth: только токен.** Значение `OPENCLAW_GATEWAY_TOKEN` из `.env` вставить в поле `Gateway Token` в браузере — запомнится на сессию браузера.
+**Auth — только токен.** Значение `OPENCLAW_GATEWAY_TOKEN` вставить в
+поле «Gateway Token» в браузере, или сразу открыть URL с токеном в query
+(тогда вводить ничего не надо и можно забукмаркать):
 
-Можно сразу открыть URL с токеном в query (тогда вводить ничего не надо и можно забукмаркать):
 ```
 http://127.0.0.1:<port>/?token=<OPENCLAW_GATEWAY_TOKEN>
 ```
 
-**Device pairing:** локальный `127.0.0.1` авто-approved. Для HTTP с публичного IP браузер может ругаться на «non-secure context» — временно включить `CONTROL_UI_DISABLE_DEVICE_AUTH=true` либо развернуть HTTPS через nginx.
+**Device pairing:** локальный `127.0.0.1` авто-approved. Для HTTP с
+публичного IP браузер может ругаться на «non-secure context» — временно
+включить `CONTROL_UI_DISABLE_DEVICE_AUTH=true` либо развернуть HTTPS
+через nginx.
 
 ## Google Workspace (скилл gog)
 
@@ -170,8 +115,10 @@ http://127.0.0.1:<port>/?token=<OPENCLAW_GATEWAY_TOKEN>
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → создай проект
 2. Включи API: Gmail, Drive, Docs, Sheets, Calendar
-3. **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID** → тип **Desktop app** → скачать `client_secret.json`
-4. **APIs & Services → OAuth consent screen → Audience** → добавь email бота в **Test users** (или Publish для бессрочного токена)
+3. **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
+   → тип **Desktop app** → скачать `client_secret.json`
+4. **APIs & Services → OAuth consent screen → Audience** → добавь email
+   бота в **Test users** (или Publish для бессрочного токена)
 
 ### Авторизация бота
 
@@ -197,43 +144,24 @@ docker exec -it gigaclaw-asabotovich \
   --auth-url 'http://127.0.0.1:XXXXX/oauth2/callback?...'
 ```
 
-Токены шифруются `GOG_KEYRING_PASSWORD`. Не меняй его — иначе токены станут нечитаемыми.
+Токены шифруются `GOG_KEYRING_PASSWORD`. Не меняй его — иначе токены
+станут нечитаемыми.
 
 ## Устранение неполадок
 
-**Бот не отвечает в MM**
+**Бот не отвечает в MM** — посмотри логи оркестратора (он один на всех
+пользователей) и логи контейнера:
+
 ```bash
-clawfarm logs asabotovich | tail -50
+docker logs -f gigaclaw-<username>
 ```
 
-**Сбросить все сессии (свежий контекст)**
+**Сбросить все сессии конкретного пользователя (свежий контекст)**
+
 ```bash
-docker exec -it gigaclaw-asabotovich rm -rf /root/.openclaw/agents/main/sessions/
-docker exec -it gigaclaw-asabotovich mkdir -p /root/.openclaw/agents/main/sessions/
+docker exec -it gigaclaw-<username> rm -rf /root/.openclaw/agents/main/sessions/
+docker exec -it gigaclaw-<username> mkdir -p /root/.openclaw/agents/main/sessions/
 ```
 
-**Полный сброс пользователя** (⚠️ удаляет память бота)
-```bash
-clawfarm remove asabotovich
-rm -rf /data/users/asabotovich
-clawfarm add-user asabotovich --env ../.env.asabotovich
-```
-
-**Обновить образ**
-```bash
-docker build -t gigaclaw:latest .
-# пересоздать всех пользователей на новом образе:
-clawfarm reset asabotovich --env ../.env.asabotovich
-```
-
-## Маппинг на будущий Orchestrator (роадмап)
-
-| Сейчас (прото) | В проде (роадмап) |
-|---|---|
-| `clawfarm add-user` | `/admin add-user` → `createContainer(user)` (задача 2.3) |
-| `clawfarm reset` | `reset(user)` (задача 2.3, триггерится после `/connect`) |
-| `clawfarm remove` / `stop` | `/admin remove` / `/admin suspend` (задача 3.1) |
-| `clawfarm list` | `/admin list-users` (задача 3.1) |
-| `.env.<user>` файлы | Postgres `credentials`, шифрование `VAULT_KEY` (задача 2.6) |
-| `dockerode` по unix socket | `dockerode` по SSH/mTLS до ClawFarm VM (задача 1.3) |
-| `envsubst` в `provision` | то же самое, скрипт без изменений |
+**Полный сброс пользователя** (⚠️ удаляет память бота) — через
+админ-команду оркестратора `/admin reset <user>` (когда появится).
