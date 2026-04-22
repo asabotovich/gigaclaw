@@ -1,11 +1,15 @@
-FROM node:22-slim
+FROM node:22
 
 ARG HIMALAYA_VERSION=1.2.0
 ARG GOGCLI_VERSION=0.12.0
 ARG GLAB_VERSION=1.92.1
 
-RUN apt-get update && \
-    apt-get install -y curl ca-certificates python3 python3-requests python3-dotenv jq git gettext-base && \
+# Force apt metadata fetches over HTTPS so corp network middleboxes that
+# rewrite plain-HTTP traffic can't invalidate GPG signatures. ca-certificates
+# and curl are already in node:22 (full), so HTTPS works from the first call.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-requests python3-dotenv jq gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
 # Install OpenClaw
