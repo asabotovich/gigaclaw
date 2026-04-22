@@ -12,11 +12,19 @@
 // The "agent:<agentId>:" prefix is stripped; raw targets without it
 // (just "mattermost:group:<id>") are also accepted.
 
+export type ParsedTargetKind = "direct" | "group" | "channel"
+
+export interface ParsedTarget {
+    kind: ParsedTargetKind
+    id: string
+    rootId?: string
+}
+
 const MATTERMOST_PREFIX = "mattermost:"
 const THREAD_MARKER = ":thread:"
 const AGENT_PREFIX_RE = /^agent:[^:]+:/
 
-export function parseTarget(raw) {
+export function parseTarget(raw: string): ParsedTarget {
     if (typeof raw !== "string" || !raw.trim()) {
         throw new Error("orchestrator channel: empty target")
     }
@@ -32,7 +40,7 @@ export function parseTarget(raw) {
     }
     body = body.slice(MATTERMOST_PREFIX.length)
 
-    let rootId
+    let rootId: string | undefined
     const threadIdx = body.lastIndexOf(THREAD_MARKER)
     if (threadIdx !== -1) {
         rootId = body.slice(threadIdx + THREAD_MARKER.length)
@@ -40,8 +48,8 @@ export function parseTarget(raw) {
         if (!rootId) throw new Error(`orchestrator channel: empty thread id in ${JSON.stringify(raw)}`)
     }
 
-    let kind
-    let id
+    let kind: ParsedTargetKind
+    let id: string
     if (body.startsWith("group:")) {
         kind = "group"
         id = body.slice("group:".length)
@@ -54,5 +62,5 @@ export function parseTarget(raw) {
     }
     if (!id) throw new Error(`orchestrator channel: empty id in ${JSON.stringify(raw)}`)
 
-    return { kind, id, rootId }
+    return rootId !== undefined ? { kind, id, rootId } : { kind, id }
 }
