@@ -286,35 +286,58 @@ gigaclaw-orchestrator (standalone TS service on the host).
 
 Use `--announce --channel orchestrator --to <TARGET>` for any outbound cron.
 
-`<TARGET>` matches OpenClaw's native Mattermost session-key format —
-the same key you'd see under `🧵 Session:` in `session_status`. The
-`agent:main:` prefix is optional; bare `mattermost:*` also works.
+### Choosing `<TARGET>` — copy from the envelope, do not construct
 
-| Where you want to deliver | Target |
-|---|---|
-| Owner's DM                | `agent:main:mattermost:<OWNER_USER_ID>`                 |
-| Channel root              | `agent:main:mattermost:channel:<CHANNEL_ID>`            |
-| Private group             | `agent:main:mattermost:group:<CHANNEL_ID>`              |
-| Inside a thread           | append `:thread:<ROOT_POST_ID>` to any of the above      |
+Every inbound message the orchestrator forwards into this agent carries
+a line in the envelope:
 
-### Pick a recipe by *where* the user asked
-
-Three scenarios, three recipes. Each fills in just the target string.
-
-#### (1) DM with the owner
-
-Resolve the owner's user id once (no channel lookup needed — the
-orchestrator turns `user_id` into the DM channel itself):
-
-```bash
-MM_TOKEN="$MM_BOT_TOKEN"
-MM_URL="$MM_BASE_URL"
-OWNER_USERNAME="$ADMIN_USERNAME"
-OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
+```
+[session_target: mattermost:<kind>:<id>[:thread:<root>]]
 ```
 
-Then:
+When the user asks for a cron / proactive delivery **in the same place
+they're talking to you**, paste this string verbatim as `--to`. That
+guarantees:
+
+- the kind prefix is correct (`channel` vs `group` is a server-side
+  fact, not an agent guess — an older recipe guessed wrong and the cron
+  delivery landed in a separate session history),
+- deliveries merge into the same session jsonl as the user's inbound
+  turns, so you can see what you've sent last time.
+
+Example — user in a channel-thread asks "раз в 5 минут сюда присылай":
+
+```bash
+openclaw cron add \
+  --name "Jokes" \
+  --every "5m" \
+  --session isolated \
+  --message "..." \
+  --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
+#                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#                                         copied verbatim from [session_target: ...]
+#                                         in the most recent envelope
+```
+
+### When the user wants delivery *somewhere else*
+
+If the user explicitly asks "в другой канал", "в ЛС владельца", etc. —
+then you build the target yourself. Shape:
+
+| Destination               | Target                                                   |
+|---|---|
+| Owner's DM                | `mattermost:direct:$ADMIN_USER_ID`                       |
+| Channel root              | `mattermost:channel:<channel_id>`                        |
+| Private group             | `mattermost:group:<channel_id>`                          |
+| Inside a thread           | append `:thread:<root_post_id>` to any of the above      |
+
+`$ADMIN_USER_ID` is pre-exported in the container's environment.
+`<channel_id>` and `<root_post_id>` are the 26-char MM ids; the
+current message's `channel` and `reply_to` appear in the envelope
+header and trailer. Full form with `agent:main:` prefix is also
+accepted, e.g. `agent:main:mattermost:direct:$ADMIN_USER_ID`.
+
+### Worked example — DM with the owner
 
 ```bash
 openclaw cron add \
@@ -322,14 +345,14 @@ openclaw cron add \
   --every "10m" \
   --session isolated \
   --message "Find a random beaver fact from the web. Return only the fact as plain text." \
-  --announce --channel orchestrator --to "agent:main:mattermost:$OWNER_ID"
+  --announce --channel orchestrator --to "mattermost:direct:$ADMIN_USER_ID"
 ```
 
-#### (2) Channel root — only when the user explicitly asked for it
+### Worked example — channel root (user explicitly asked)
 
-Use this recipe **only** if the user said «в канал», «в общий чат», «пусть
-все видят», «post to #general», or similar. Being-in-a-channel by itself is
-not an invitation. Take `<CHANNEL_ID>` from the triggering message.
+Use this recipe **only** if the user said «в канал», «в общий чат»,
+«пусть все видят», «post to #general», or similar. Being-in-a-channel
+by itself is not an invitation.
 
 ```bash
 openclaw cron add \
@@ -337,30 +360,12 @@ openclaw cron add \
   --every "10m" \
   --session isolated \
   --message "Find a random cheese fact. Return only the fact as plain text in Russian." \
-  --announce --channel orchestrator --to "agent:main:mattermost:channel:<CHANNEL_ID>"
+  --announce --channel orchestrator --to "mattermost:channel:<CHANNEL_ID>"
 ```
 
-(For a private group use `...:group:<CHANNEL_ID>` instead of `...:channel:`.)
-
-#### (3) Inside a thread
-
-Same as (1) or (2), plus `:thread:<ROOT_POST_ID>`. `<CHANNEL_ID>` и
-`<ROOT_POST_ID>` берём из контекста триггерящего сообщения (`group_channel`
-и `reply_to_id` / `topic_id` из payload'а).
-
-```bash
-openclaw cron add \
-  --name "Beaver facts" \
-  --every "10m" \
-  --session isolated \
-  --message "Find a beaver fact. Return plain text." \
-  --announce --channel orchestrator \
-  --to "agent:main:mattermost:group:<CHANNEL_ID>:thread:<ROOT_POST_ID>"
-```
-
-If you have a session key handy (e.g. from `session_status`), paste it
-whole into `--to`. The orchestrator channel plugin parses both the
-`agent:main:` form and the bare `mattermost:*` form.
+For the same delivery inside a thread, append `:thread:<ROOT_POST_ID>`
+(or — simpler — just copy `[session_target: ...]` from the triggering
+envelope, as in the first example above).
 
 ### Schedule types (use with any recipe above)
 
