@@ -304,88 +304,85 @@ in via `/v1/responses` from the orchestrator, outbound leaves via the
 `orchestrator` channel plugin which bridges back to the external
 gigaclaw-orchestrator (standalone TS service on the host).
 
-Use `--announce --channel orchestrator --to <TARGET>` for any outbound cron.
+### Cron in "the same place we're talking" — persistent session
 
-### Choosing `<TARGET>` — copy from the envelope, do not construct
-
-Every inbound message the orchestrator forwards into this agent carries
-a line in the envelope:
+Every inbound envelope carries two matched hints:
 
 ```
-[session_target: mattermost:<kind>:<id>[:thread:<root>]]
+[session_target: mattermost:<kind>:<id>[:thread:<root>]]     ← use for --to
+[session_key: agent:main:mattermost:<kind>:<id>[:thread:<root>]]  ← use for --session-key
 ```
 
-When the user asks for a cron / proactive delivery **in the same place
-they're talking to you**, paste this string verbatim as `--to`. That
-guarantees:
-
-- the kind prefix is correct (`channel` vs `group` is a server-side
-  fact, not an agent guess — an older recipe guessed wrong and the cron
-  delivery landed in a separate session history),
-- deliveries merge into the same session jsonl as the user's inbound
-  turns, so you can see what you've sent last time.
-
-Example — user in a channel-thread asks "раз в 5 минут сюда присылай":
+When the user wants a cron delivered here (same channel / thread / DM),
+**copy both strings verbatim** and use them together with
+`--session current`:
 
 ```bash
 openclaw cron add \
   --name "Jokes" \
   --every "5m" \
-  --session isolated \
+  --session current \
+  --session-key "<paste [session_key] here>" \
   --message "..." \
-  --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
-#                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#                                         copied verbatim from [session_target: ...]
-#                                         in the most recent envelope
+  --announce --channel orchestrator --to "<paste [session_target] here>"
 ```
 
-### When the user wants delivery *somewhere else*
+Why this combo:
 
-If the user explicitly asks "в другой канал", "в ЛС владельца", etc. —
-then you build the target yourself. Shape:
+- `--session current` tells OpenClaw "reuse an existing session, don't
+  make a new isolated one per run" (no `forceNew`).
+- `--session-key` names the exact session — the user's thread / DM.
+  Each tick runs IN that session, so the agent's output is persisted
+  as a real assistant turn in the same jsonl as the user's inbound
+  messages. Next time the user writes, you can see what the cron did.
+- `--announce --channel orchestrator --to` is the separate MM delivery
+  (the message the user actually sees in the chat). The session-level
+  persistence above and the MM-level announce are independent.
 
-| Destination               | Target                                                   |
+Example for a thread in a channel:
+
+```bash
+openclaw cron add \
+  --name "Quatrains" \
+  --every "5m" \
+  --session current \
+  --session-key "agent:main:mattermost:channel:nxxp...:thread:pdde..." \
+  --message "Come up with a random quatrain. Return only the quatrain as plain text." \
+  --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
+```
+
+### Cron delivered *somewhere else*
+
+If the user explicitly says "в другой канал", "в ЛС владельца", "post
+to #general" — build the target yourself. Shape:
+
+| Destination               | --to (session_target)                                    |
 |---|---|
 | Owner's DM                | `mattermost:direct:$ADMIN_USER_ID`                       |
 | Channel root              | `mattermost:channel:<channel_id>`                        |
 | Private group             | `mattermost:group:<channel_id>`                          |
 | Inside a thread           | append `:thread:<root_post_id>` to any of the above      |
 
-`$ADMIN_USER_ID` is pre-exported in the container's environment.
-`<channel_id>` and `<root_post_id>` are the 26-char MM ids; the
-current message's `channel` and `reply_to` appear in the envelope
-header and trailer. Full form with `agent:main:` prefix is also
-accepted, e.g. `agent:main:mattermost:direct:$ADMIN_USER_ID`.
-
-### Worked example — DM with the owner
+`--session-key` is the same string with an `agent:main:` prefix, e.g.
+`agent:main:mattermost:direct:$ADMIN_USER_ID`.
 
 ```bash
 openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
-  --session isolated \
-  --message "Find a random beaver fact from the web. Return only the fact as plain text." \
+  --session current \
+  --session-key "agent:main:mattermost:direct:$ADMIN_USER_ID" \
+  --message "Find a random beaver fact. Return only the fact as plain text." \
   --announce --channel orchestrator --to "mattermost:direct:$ADMIN_USER_ID"
 ```
 
-### Worked example — channel root (user explicitly asked)
+### When to keep using `--session isolated` instead
 
-Use this recipe **only** if the user said «в канал», «в общий чат»,
-«пусть все видят», «post to #general», or similar. Being-in-a-channel
-by itself is not an invitation.
-
-```bash
-openclaw cron add \
-  --name "Cheese facts" \
-  --every "10m" \
-  --session isolated \
-  --message "Find a random cheese fact. Return only the fact as plain text in Russian." \
-  --announce --channel orchestrator --to "mattermost:channel:<CHANNEL_ID>"
-```
-
-For the same delivery inside a thread, append `:thread:<ROOT_POST_ID>`
-(or — simpler — just copy `[session_target: ...]` from the triggering
-envelope, as in the first example above).
+Only for fire-and-forget crons where you explicitly do NOT want the
+output in the conversation history — e.g. running diagnostics that
+would just be noise in the chat. 99% of "put X here every N minutes"
+requests want `--session current` with the target's session-key, not
+isolated.
 
 ### Schedule types (use with any recipe above)
 
