@@ -1,5 +1,6 @@
 import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core"
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core"
+import type { ChannelOutboundSessionRoute } from "openclaw/plugin-sdk/core"
 import { parseTarget } from "./target.js"
 import { pushMessage } from "./push.js"
 
@@ -115,6 +116,49 @@ export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
                         return null
                     }
                 },
+            },
+            // Without this hook OpenClaw builds outbound session keys like
+            // `agent:main:orchestrator:direct:mattermost:direct:<id>` — prefixing
+            // our target with the channel name. That puts the BOOT welcome DM
+            // and every cron into separate jsonl files from the inbound session
+            // (which uses `agent:main:mattermost:direct:<id>`). From the user's
+            // point of view it's one DM with the bot, so we pin the outbound
+            // session to the same key the orchestrator sets on inbound.
+            //
+            // DMs flatten the thread suffix (MM threads in a DM are visual
+            // grouping). Groups and channels keep `:thread:<root>` when present.
+            resolveOutboundSessionRoute: ({ target, agentId }) => {
+                const id = agentId || "main"
+                let parsed
+                try {
+                    parsed = parseTarget(target)
+                } catch {
+                    return null
+                }
+                if (parsed.kind === "direct") {
+                    const key = `agent:${id}:mattermost:direct:${parsed.id}`
+                    return {
+                        sessionKey: key,
+                        baseSessionKey: key,
+                        peer: { kind: "direct", id: parsed.id },
+                        chatType: "direct",
+                        from: "orchestrator",
+                        to: target.trim(),
+                    }
+                }
+                const kindPrefix = parsed.kind === "group" ? "group" : "channel"
+                const base = `agent:${id}:mattermost:${kindPrefix}:${parsed.id}`
+                const key = parsed.rootId ? `${base}:thread:${parsed.rootId}` : base
+                const route: ChannelOutboundSessionRoute = {
+                    sessionKey: key,
+                    baseSessionKey: base,
+                    peer: { kind: parsed.kind, id: parsed.id },
+                    chatType: parsed.kind,
+                    from: "orchestrator",
+                    to: target.trim(),
+                }
+                if (parsed.rootId) route.threadId = parsed.rootId
+                return route
             },
         },
     },
