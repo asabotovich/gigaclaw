@@ -1,9 +1,22 @@
-// POST to the orchestrator's /push endpoint. Body shape matches what main.ts
-// handlePush() expects: exactly one of {channel_id} or {user_id}, plus optional
-// root_id, plus message.
+import type { ParsedTarget } from "./target.js"
 
-export async function pushMessage({ pushUrl, pushSecret, parsed, message }) {
-    const base = { message }
+export interface PushParams {
+    pushUrl: string
+    pushSecret: string
+    parsed: ParsedTarget
+    message: string
+}
+
+export interface PushResult {
+    ok?: boolean
+    post_id?: string
+}
+
+export async function pushMessage(params: PushParams): Promise<PushResult> {
+    const { pushUrl, pushSecret, parsed, message } = params
+
+    type BaseBody = { message: string; root_id?: string }
+    const base: BaseBody = { message }
     if (parsed.rootId) base.root_id = parsed.rootId
     const body = parsed.kind === "direct"
         ? { ...base, user_id: parsed.id }
@@ -21,5 +34,5 @@ export async function pushMessage({ pushUrl, pushSecret, parsed, message }) {
         const text = await res.text().catch(() => "")
         throw new Error(`orchestrator push: ${res.status} ${text.slice(0, 200)}`)
     }
-    return res.json().catch(() => ({}))
+    return res.json().catch(() => ({}) as PushResult)
 }
