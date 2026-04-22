@@ -1,0 +1,19 @@
+{
+  "name": "@gigaclaw/openclaw-orchestrator-channel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw channel plugin: outbound bridge to the gigaclaw-orchestrator /push endpoint.",
+  "main": "./index.js",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "channel": {
+      "id": "orchestrator",
+      "label": "GigaClaw Orchestrator",
+      "blurb": "Relays outbound messages through the gigaclaw-orchestrator /push endpoint."
+    }
+  },
+  "dependencies": {
+    "openclaw": "2026.4.14"
+  }
+}

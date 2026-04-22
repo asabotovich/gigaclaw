@@ -86,8 +86,20 @@
 | .hooks.internal.entries["session-memory"].enabled        = true
 | .hooks.internal.entries["boot-md"].enabled               = true
 
-| .plugins.allow                          = ["mattermost"]
+| .plugins.allow                          = ["mattermost", "orchestrator"]
 | .plugins.entries.mattermost.enabled     = true
+| .plugins.entries.orchestrator.enabled   = true
+# Where OpenClaw looks for non-bundled plugins. Our custom orchestrator
+# channel plugin lives at /opt/gigaclaw/extensions/orchestrator-channel
+# (see Dockerfile COPY).
+| .plugins.load.paths                     = ["/opt/gigaclaw/extensions"]
+
+# Orchestrator channel: outbound bridge to the gigaclaw-orchestrator /push
+# endpoint. channels.mattermost stays enabled=false — this channel takes over
+# outbound delivery and cron announce.
+| .channels.orchestrator.enabled          = true
+| .channels.orchestrator.pushUrl          = env.ORCHESTRATOR_URL
+| .channels.orchestrator.pushSecret       = env.ORCHESTRATOR_PUSH_SECRET
 
 # --- Baseline skill registration ---
 
