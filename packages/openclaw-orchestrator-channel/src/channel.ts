@@ -47,6 +47,13 @@ function inspectAccount(cfg: OpenClawConfig) {
     }
 }
 
+const TARGET_HINT =
+    "mattermost:direct:<user_id> for DM, mattermost:channel:<channel_id> for a channel, " +
+    "mattermost:group:<channel_id> for a private group; append :thread:<root_post_id> for thread reply. " +
+    "The container's owner id is available as $ADMIN_USER_ID."
+
+const TARGET_PREFIX_RE = /^(agent:[^:]+:)?mattermost:/
+
 export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
     base: {
         id: "orchestrator",
@@ -78,6 +85,37 @@ export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
         },
         setup: {
             applyAccountConfig: ({ cfg }) => cfg,
+        },
+        // Without this hook OpenClaw's message-action-runner treats any
+        // target it doesn't find in its directory cache as "Unknown target"
+        // and never calls our sendText. The resolver tells core: "yes, this
+        // mattermost:... string is something I own — hand it to sendText as-is".
+        messaging: {
+            normalizeTarget: (raw: string) => {
+                const trimmed = raw?.trim()
+                return trimmed ? trimmed : undefined
+            },
+            targetResolver: {
+                hint: TARGET_HINT,
+                looksLikeId: (raw: string) => {
+                    const trimmed = raw?.trim() ?? ""
+                    return TARGET_PREFIX_RE.test(trimmed)
+                },
+                resolveTarget: async ({ input }) => {
+                    try {
+                        const parsed = parseTarget(input)
+                        const kind = parsed.kind === "direct" ? "user" : parsed.kind
+                        return {
+                            to: input.trim(),
+                            kind,
+                            display: input.trim(),
+                            source: "normalized",
+                        }
+                    } catch {
+                        return null
+                    }
+                },
+            },
         },
     },
     outbound: {
