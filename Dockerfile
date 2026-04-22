@@ -57,12 +57,16 @@ COPY workspace/skills                 /opt/gigaclaw/skills
 
 # Custom OpenClaw channel plugin that bridges outbound messages to the
 # gigaclaw-orchestrator /push endpoint. See plugins.load.paths in patches.jq.
-# Plugin ships as TypeScript; we install dev deps, compile, then prune dev.
+# Plugin ships as TypeScript; compile here against the already-global
+# openclaw install (it's huge, so we symlink instead of re-installing it
+# per-plugin). Only dev deps (typescript, @types/node) land in node_modules.
 COPY packages/openclaw-orchestrator-channel /opt/gigaclaw/extensions/orchestrator-channel
 RUN cd /opt/gigaclaw/extensions/orchestrator-channel && \
     npm install --no-audit --no-fund && \
+    mkdir -p node_modules && \
+    ln -s /usr/local/lib/node_modules/openclaw node_modules/openclaw && \
     npm run build && \
-    npm prune --omit=dev
+    rm -rf node_modules
 
 COPY scripts/provision.sh    /usr/local/bin/provision
 COPY scripts/entrypoint.sh   /usr/local/bin/entrypoint
