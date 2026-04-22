@@ -47,8 +47,8 @@ jq '.skills.entries | to_entries | map({skill: .key, env: (.value.env // {})})' 
 `message` tool не принимает `@username`. Нужен Mattermost user ID:
 
 ```bash
-MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
-MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
+MM_TOKEN="$MM_BOT_TOKEN"
+MM_URL="$MM_BASE_URL"
 OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
   "$MM_URL/api/v4/users/username/${ADMIN_USERNAME}" | jq -r '.id')
 ```

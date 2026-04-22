@@ -1,7 +1,4 @@
-  .channels.mattermost.botToken      = env.MM_BOT_TOKEN
-| .channels.mattermost.baseUrl       = env.MM_BASE_URL
-| .channels.mattermost.allowFrom     = [env.ADMIN_USERNAME]
-
+  del(.channels.mattermost)
 | .models.mode                                  = "replace"
 | .models.providers.openrouter.baseUrl          = "https://openrouter.ai/api/v1"
 | .models.providers.openrouter.apiKey           = env.OPENROUTER_API_KEY

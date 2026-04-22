@@ -14,11 +14,12 @@ Use this skill when the user asks to:
 
 ## Prerequisites
 
-Read token and base URL from the openclaw config (the bot's own credentials — no extra setup needed):
+Token and base URL are already in the container's environment — no config
+lookup needed:
 
 ```bash
-MM_TOKEN=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['botToken'])")
-MM_URL=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['baseUrl'])")
+MM_TOKEN="$MM_BOT_TOKEN"
+MM_URL="$MM_BASE_URL"
 ```
 
 Run both lines at the start of every session that uses this skill.
