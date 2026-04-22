@@ -279,9 +279,9 @@ to the chat. The container auto-pairs the in-container CLI at startup
 
 ### Delivery goes through the `orchestrator` channel, not `mattermost`
 
-This container runs with `channels.mattermost.enabled = false` — the MM
-plugin is loaded but doesn't open any WS. Outbound delivery lives on a
-separate channel, `orchestrator`, which bridges to the external
+This container has no `mattermost` channel configured at all — inbound comes
+in via `/v1/responses` from the orchestrator, outbound leaves via the
+`orchestrator` channel plugin which bridges back to the external
 gigaclaw-orchestrator (standalone TS service on the host).
 
 Use `--announce --channel orchestrator --to <TARGET>` for any outbound cron.
@@ -307,9 +307,9 @@ Resolve the owner's user id once (no channel lookup needed — the
 orchestrator turns `user_id` into the DM channel itself):
 
 ```bash
-MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
-MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
-OWNER_USERNAME=$(jq -r '.channels.mattermost.allowFrom[0]' /root/.openclaw/openclaw.json)
+MM_TOKEN="$MM_BOT_TOKEN"
+MM_URL="$MM_BASE_URL"
+OWNER_USERNAME="$ADMIN_USERNAME"
 OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
   "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
 ```

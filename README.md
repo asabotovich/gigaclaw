@@ -22,9 +22,11 @@ Host (VM или ноутбук)
     └── SQLite: пользователи + apply-requests + admin-команды
 ```
 
-Контейнер сам **не подключается** к Mattermost: `channels.mattermost.enabled = false`,
-бот-плагин не загружен. Весь inbound идёт через оркестратор, весь outbound —
+Контейнер сам **не подключается** к Mattermost: в его конфиге канала
+`mattermost` нет вообще. Весь inbound идёт через оркестратор, весь outbound —
 через кастомный channel-плагин `orchestrator` → `/push` оркестратора.
+Токены (`MM_BOT_TOKEN`, `MM_BASE_URL`) передаются в контейнер через env
+и используются скиллами напрямую для REST-вызовов.
 
 Скиллы в образе: `mattermost` (REST утилиты), `atlassian` (Jira + Confluence
 через PAT), `glab` (GitLab CLI), `himalaya` (IMAP/SMTP), `gog` (Google
