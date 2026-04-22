@@ -1,5 +1,6 @@
 import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core"
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core"
+import { emptyChannelConfigSchema } from "openclaw/plugin-sdk/core"
 import type { ChannelOutboundSessionRoute } from "openclaw/plugin-sdk/core"
 import { parseTarget } from "./target.js"
 import { pushMessage } from "./push.js"
@@ -79,6 +80,13 @@ export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
             chatTypes: ["direct", "channel", "group", "thread"],
         },
         reload: { configPrefixes: ["channels.orchestrator"] },
+        // Control UI looks up configSchema to build a settings form. Without
+        // one it renders "Unsupported type: . Use Raw mode." in the Channels
+        // panel. Our three fields (enabled / pushUrl / pushSecret) are driven
+        // by the orchestrator via patches.jq on provision — there's nothing
+        // useful to edit here by hand, so we declare an empty schema to
+        // suppress the error.
+        configSchema: emptyChannelConfigSchema(),
         config: {
             listAccountIds: () => [],
             resolveAccount,
