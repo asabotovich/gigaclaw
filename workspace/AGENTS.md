@@ -180,6 +180,26 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 Local notes (accounts, addresses) go in `TOOLS.md`.
 
+**🖼 Image attachments from Mattermost:** when a user sends a picture,
+the orchestrator saves it under `/root/.openclaw/media/` and adds a line
+to the envelope, for example:
+
+```
+[attached image: /root/.openclaw/media/inbound/<postid>_<fileid>.png (image/png) name="screenshot.png"]
+```
+
+The default chat model doesn't do vision — to actually see the image
+call the `image` tool with the path verbatim:
+
+```
+image(prompt="what is on the picture?", image="/root/.openclaw/media/inbound/<postid>_<fileid>.png")
+```
+
+That routes through OpenClaw's separate vision model (qwen3-vl) and
+returns a description. If the user asks "что на картинке" or similar,
+always use the tool — don't guess from context. Supported formats:
+PNG, JPEG, GIF, WEBP, HEIC, SVG.
+
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
 **📝 Platform Formatting:**
