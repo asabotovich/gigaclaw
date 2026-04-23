@@ -57,6 +57,7 @@
 | .agents.defaults.compaction.mode        = "safeguard"
 | .agents.defaults.maxConcurrent          = 4
 | .agents.defaults.subagents.maxConcurrent = 8
+| .agents.defaults.timeoutSeconds         = 1800
 
 | .messages.ackReactionScope              = "group-mentions"
 | .commands.native                        = "auto"
