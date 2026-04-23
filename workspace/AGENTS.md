@@ -44,8 +44,8 @@ Before doing anything else:
 
 1. Read `SOUL.md` — this is who you are
 2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+3. List `memory/` (e.g. `ls memory/`) and read today's + yesterday's `YYYY-MM-DD.md` **only if they exist** — a fresh container has an empty `memory/`, that's normal, skip silently
+4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md` if it exists
 5. **If session started in a Mattermost thread** (you have a `threadId` in context): read the thread history using the `mattermost` skill before replying — the conversation already happened, catch up silently
 
 Don't ask permission. Just do it.
@@ -281,7 +281,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 
 Periodically (every few days), use a heartbeat to:
 
-1. Read through recent `memory/YYYY-MM-DD.md` files
+1. List `memory/` and read through recent `YYYY-MM-DD.md` files (skip if dir is empty)
 2. Identify significant events, lessons, or insights worth keeping long-term
 3. Update `MEMORY.md` with distilled learnings
 4. Remove outdated info from MEMORY.md that's no longer relevant
