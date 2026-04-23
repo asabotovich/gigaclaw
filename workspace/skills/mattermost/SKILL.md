@@ -101,12 +101,22 @@ Notes:
 
 ## User Info
 
-**The owner's own Mattermost profile is the first source of truth** for their
-email / full name / nickname. If the owner asks "какая у меня почта?",
-"который час в моём городе", "на какую почту отправить отчёт" — look up
-their profile via `GET /users/username/$ADMIN_USERNAME` and use
-`email`, `first_name`, `last_name`, `locale`, `nickname` from the response.
-Don't ask the owner to provide what MM already knows.
+**The owner's Mattermost profile is the first source of truth** for
+everything personal about them — email, first/last name, nickname,
+position (job title), locale, timezone, roles, and any custom profile
+props. If the owner asks any of these about themselves ("какая у меня
+почта", "какая моя должность", "какой у меня часовой пояс", "на какую
+почту отправить отчёт", etc.) — pull it from
+`GET /users/username/$ADMIN_USERNAME` and answer from the response.
+Same when you need to know any of these to perform a task (send an
+email on their behalf, schedule something in their timezone, phrase an
+address by position). **Don't ask the owner to provide what MM
+already knows.** Ask only when the profile genuinely does not have
+the field (e.g. a preference they never set in their MM profile).
+
+The profile's `.timezone` object (`automaticTimezone`,
+`manualTimezone`, `useAutomaticTimezone`) is the authoritative TZ —
+prefer it over any default in USER.md.
 
 The same rule applies to other thread participants when summarising or
 addressing them — resolve via the API, don't paste raw user IDs.
