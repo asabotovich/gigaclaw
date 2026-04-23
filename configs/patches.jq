@@ -18,6 +18,17 @@
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free"
   ]
 
+# Per-container identity so the Control UI sidebar shows whose container
+# you are looking at. Channels.orchestrator does NOT use this for MM post
+# authorship (bot identity is fixed by MM_BOT_TOKEN), it only surfaces in
+# the local dashboard and session list.
+| .agents.defaults.identity.name = (
+    if (env.ADMIN_NAME // "") != ""
+    then env.ADMIN_NAME + " (" + env.ADMIN_USERNAME + ")"
+    else env.ADMIN_USERNAME
+    end
+  )
+
 | .gateway.port                                         = 18789
 | .gateway.mode                                         = "local"
 | .gateway.bind                                         = "lan"
