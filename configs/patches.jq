@@ -18,11 +18,11 @@
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free"
   ]
 
-# Per-container identity so the Control UI sidebar shows whose container
-# you are looking at. Channels.orchestrator does NOT use this for MM post
-# authorship (bot identity is fixed by MM_BOT_TOKEN), it only surfaces in
-# the local dashboard and session list.
-| .agents.defaults.identity.name = (
+# Per-container label shown in the Control UI dashboard (sidebar, chat
+# chrome). Uses the dedicated ui.assistant.name layer — it overrides the
+# display name only in the dashboard and does not affect the agent's
+# identity used for ACP bindings, logs, or MM post authorship.
+| .ui.assistant.name = (
     if (env.ADMIN_NAME // "") != ""
     then env.ADMIN_NAME + " (" + env.ADMIN_USERNAME + ")"
     else env.ADMIN_USERNAME
