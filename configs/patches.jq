@@ -5,19 +5,16 @@
 | .models.providers.openrouter.models           = [
     {id: env.LLM_MODEL,                           name: env.LLM_MODEL},
     {id: env.LLM_VISION_MODEL,                    name: env.LLM_VISION_MODEL,                    input: ["text", "image"]},
-    {id: "qwen/qwen3-vl-8b-instruct",             name: "qwen/qwen3-vl-8b-instruct",             input: ["text", "image"]},
     {id: "nvidia/nemotron-nano-12b-v2-vl:free",   name: "nvidia/nemotron-nano-12b-v2-vl:free",   input: ["text", "image"]}
   ]
 | .agents.defaults.model.primary                = ("openrouter/" + env.LLM_MODEL)
 | .agents.defaults.models                       = {
     ("openrouter/" + env.LLM_MODEL):                               {alias: env.LLM_MODEL},
     ("openrouter/" + env.LLM_VISION_MODEL):                        {alias: env.LLM_VISION_MODEL},
-    "openrouter/qwen/qwen3-vl-8b-instruct":                        {alias: "qwen3-vl-8b"},
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free":              {alias: "nemotron-vl-free"}
   }
 | .agents.defaults.imageModel.primary           = ("openrouter/" + env.LLM_VISION_MODEL)
 | .agents.defaults.imageModel.fallbacks         = [
-    "openrouter/qwen/qwen3-vl-8b-instruct",
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free"
   ]
 
