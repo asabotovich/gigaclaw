@@ -20,11 +20,10 @@
 | .gateway.auth.token                                   = env.OPENCLAW_GATEWAY_TOKEN
 | .gateway.http.endpoints.responses.enabled             = true
 | .gateway.controlUi.allowedOrigins                     = [
-    "http://127.0.0.1:18789",
-    "http://localhost:18789",
+    env.PUBLIC_ORIGIN,
+    env.PUBLIC_ORIGIN_LOCALHOST,
     "http://127.0.0.1",
-    "http://localhost",
-    env.PUBLIC_ORIGIN
+    "http://localhost"
   ]
 | .gateway.controlUi.dangerouslyDisableDeviceAuth       = (env.CONTROL_UI_DISABLE_DEVICE_AUTH == "true")
 
