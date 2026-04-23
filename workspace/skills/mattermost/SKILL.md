@@ -35,26 +35,33 @@ CHANNEL_ID="de76e8ba16da8c3b98a26adb206bf8cf"  # paste the ID from context, with
 
 ## Channel History
 
-Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, username, and text:
+Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, `@username`, and text. The snippet resolves `user_id` → `username` in bulk via `POST /users/ids` in one extra call, so output never contains raw IDs:
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/channels/$CHANNEL_ID/posts?per_page=30" \
-  | python3 -c "
-import json, sys, datetime
-data = json.load(sys.stdin)
-order = data.get('order', [])
-posts = data.get('posts', {})
-for pid in reversed(order):
-    p = posts[pid]
+CHANNEL_ID="<paste id without #>"
+PER_PAGE=30
+python3 <<'PY'
+import os, json, urllib.request, datetime
+MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+def api(method, path, body=None):
+    req = urllib.request.Request(MM_URL + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
+        method=method)
+    return json.load(urllib.request.urlopen(req))
+posts = api('GET', f'/api/v4/channels/{os.environ["CHANNEL_ID"]}/posts?per_page={os.environ["PER_PAGE"]}')
+uids = sorted({p['user_id'] for p in posts['posts'].values() if p.get('user_id')})
+users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+for pid in reversed(posts.get('order', [])):
+    p = posts['posts'][pid]
+    u = users.get(p.get('user_id'), {})
+    name = u.get('username') or p.get('user_id') or '?'
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
-    print(f'{ts}  {p.get(\"props\", {}).get(\"username\", p.get(\"user_id\", \"\"))} : {p.get(\"message\", \"\")}')
-"
+    print(f'{ts}  @{name}: {p.get("message", "")}')
+PY
 ```
 
-To fetch more messages, increase `per_page` (max 200). To go further back, add `&before=<post_id>`.
-
-To resolve `user_id` to a username in the output, use the user lookup below.
+To fetch more messages, raise `PER_PAGE` (max 200). To page further back, add `&before=<post_id>` to the URL.
 
 ## Thread History
 
@@ -64,28 +71,45 @@ The current thread's root post ID is available in the session context (OpenClaw 
 
 ```bash
 ROOT_POST_ID="<paste root post id here>"
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/posts/$ROOT_POST_ID/thread" \
-  | python3 -c "
-import json, sys, datetime
-data = json.load(sys.stdin)
-order = data.get('order', [])
-posts = data.get('posts', {})
-for pid in order:
-    p = posts[pid]
+python3 <<'PY'
+import os, json, urllib.request, datetime
+MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+def api(method, path, body=None):
+    req = urllib.request.Request(MM_URL + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
+        method=method)
+    return json.load(urllib.request.urlopen(req))
+thread = api('GET', f'/api/v4/posts/{os.environ["ROOT_POST_ID"]}/thread')
+uids = sorted({p['user_id'] for p in thread['posts'].values() if p.get('user_id')})
+users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+for pid in thread.get('order', []):
+    p = thread['posts'][pid]
+    u = users.get(p.get('user_id'), {})
+    name = u.get('username') or p.get('user_id') or '?'
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
     indent = '  ↳ ' if p.get('root_id') else ''
-    print(f'{ts}  {indent}{p.get(\"user_id\", \"\")} : {p.get(\"message\", \"\")}')
-"
+    print(f'{ts}  {indent}@{name}: {p.get("message", "")}')
+PY
 ```
 
+**Note:** the root post is in `thread.posts` but has no `root_id`, so it prints without the `↳` indent — use that to distinguish the opening post from replies.
+
 Notes:
-- The root post itself is included in the response (no `root_id` field on it).
-- Replies have `root_id` set to the root post ID.
 - The response is not paginated — all replies are returned at once.
 - To get the post ID from a Mattermost URL: the last segment of the permalink is the post ID.
 
 ## User Info
+
+**The owner's own Mattermost profile is the first source of truth** for their
+email / full name / nickname. If the owner asks "какая у меня почта?",
+"который час в моём городе", "на какую почту отправить отчёт" — look up
+their profile via `GET /users/username/$ADMIN_USERNAME` and use
+`email`, `first_name`, `last_name`, `locale`, `nickname` from the response.
+Don't ask the owner to provide what MM already knows.
+
+The same rule applies to other thread participants when summarising or
+addressing them — resolve via the API, don't paste raw user IDs.
 
 **By user ID:**
 
