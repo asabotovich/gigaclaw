@@ -18,17 +18,6 @@
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free"
   ]
 
-# Per-container label shown in the Control UI dashboard (sidebar, chat
-# chrome). Uses the dedicated ui.assistant.name layer — it overrides the
-# display name only in the dashboard and does not affect the agent's
-# identity used for ACP bindings, logs, or MM post authorship.
-| .ui.assistant.name = (
-    if (env.ADMIN_NAME // "") != ""
-    then env.ADMIN_NAME + " (" + env.ADMIN_USERNAME + ")"
-    else env.ADMIN_USERNAME
-    end
-  )
-
 | .gateway.port                                         = 18789
 | .gateway.mode                                         = "local"
 | .gateway.bind                                         = "lan"
