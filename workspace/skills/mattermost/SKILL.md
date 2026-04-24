@@ -14,11 +14,12 @@ Use this skill when the user asks to:
 
 ## Prerequisites
 
-Read token and base URL from the openclaw config (the bot's own credentials — no extra setup needed):
+Token and base URL are already in the container's environment — no config
+lookup needed:
 
 ```bash
-MM_TOKEN=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['botToken'])")
-MM_URL=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['baseUrl'])")
+MM_TOKEN="$MM_BOT_TOKEN"
+MM_URL="$MM_BASE_URL"
 ```
 
 Run both lines at the start of every session that uses this skill.
@@ -34,26 +35,33 @@ CHANNEL_ID="de76e8ba16da8c3b98a26adb206bf8cf"  # paste the ID from context, with
 
 ## Channel History
 
-Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, username, and text:
+Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, `@username`, and text. The snippet resolves `user_id` → `username` in bulk via `POST /users/ids` in one extra call, so output never contains raw IDs:
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/channels/$CHANNEL_ID/posts?per_page=30" \
-  | python3 -c "
-import json, sys, datetime
-data = json.load(sys.stdin)
-order = data.get('order', [])
-posts = data.get('posts', {})
-for pid in reversed(order):
-    p = posts[pid]
+CHANNEL_ID="<paste id without #>"
+PER_PAGE=30
+python3 <<'PY'
+import os, json, urllib.request, datetime
+MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+def api(method, path, body=None):
+    req = urllib.request.Request(MM_URL + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
+        method=method)
+    return json.load(urllib.request.urlopen(req))
+posts = api('GET', f'/api/v4/channels/{os.environ["CHANNEL_ID"]}/posts?per_page={os.environ["PER_PAGE"]}')
+uids = sorted({p['user_id'] for p in posts['posts'].values() if p.get('user_id')})
+users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+for pid in reversed(posts.get('order', [])):
+    p = posts['posts'][pid]
+    u = users.get(p.get('user_id'), {})
+    name = u.get('username') or p.get('user_id') or '?'
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
-    print(f'{ts}  {p.get(\"props\", {}).get(\"username\", p.get(\"user_id\", \"\"))} : {p.get(\"message\", \"\")}')
-"
+    print(f'{ts}  @{name}: {p.get("message", "")}')
+PY
 ```
 
-To fetch more messages, increase `per_page` (max 200). To go further back, add `&before=<post_id>`.
-
-To resolve `user_id` to a username in the output, use the user lookup below.
+To fetch more messages, raise `PER_PAGE` (max 200). To page further back, add `&before=<post_id>` to the URL.
 
 ## Thread History
 
@@ -63,28 +71,55 @@ The current thread's root post ID is available in the session context (OpenClaw 
 
 ```bash
 ROOT_POST_ID="<paste root post id here>"
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/posts/$ROOT_POST_ID/thread" \
-  | python3 -c "
-import json, sys, datetime
-data = json.load(sys.stdin)
-order = data.get('order', [])
-posts = data.get('posts', {})
-for pid in order:
-    p = posts[pid]
+python3 <<'PY'
+import os, json, urllib.request, datetime
+MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+def api(method, path, body=None):
+    req = urllib.request.Request(MM_URL + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
+        method=method)
+    return json.load(urllib.request.urlopen(req))
+thread = api('GET', f'/api/v4/posts/{os.environ["ROOT_POST_ID"]}/thread')
+uids = sorted({p['user_id'] for p in thread['posts'].values() if p.get('user_id')})
+users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+for pid in thread.get('order', []):
+    p = thread['posts'][pid]
+    u = users.get(p.get('user_id'), {})
+    name = u.get('username') or p.get('user_id') or '?'
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
     indent = '  ↳ ' if p.get('root_id') else ''
-    print(f'{ts}  {indent}{p.get(\"user_id\", \"\")} : {p.get(\"message\", \"\")}')
-"
+    print(f'{ts}  {indent}@{name}: {p.get("message", "")}')
+PY
 ```
 
+**Note:** the root post is in `thread.posts` but has no `root_id`, so it prints without the `↳` indent — use that to distinguish the opening post from replies.
+
 Notes:
-- The root post itself is included in the response (no `root_id` field on it).
-- Replies have `root_id` set to the root post ID.
 - The response is not paginated — all replies are returned at once.
 - To get the post ID from a Mattermost URL: the last segment of the permalink is the post ID.
 
 ## User Info
+
+**The owner's Mattermost profile is the first source of truth** for
+everything personal about them — email, first/last name, nickname,
+position (job title), locale, timezone, roles, and any custom profile
+props. If the owner asks any of these about themselves ("какая у меня
+почта", "какая моя должность", "какой у меня часовой пояс", "на какую
+почту отправить отчёт", etc.) — pull it from
+`GET /users/username/$ADMIN_USERNAME` and answer from the response.
+Same when you need to know any of these to perform a task (send an
+email on their behalf, schedule something in their timezone, phrase an
+address by position). **Don't ask the owner to provide what MM
+already knows.** Ask only when the profile genuinely does not have
+the field (e.g. a preference they never set in their MM profile).
+
+The profile's `.timezone` object (`automaticTimezone`,
+`manualTimezone`, `useAutomaticTimezone`) is the authoritative TZ —
+prefer it over any default in USER.md.
+
+The same rule applies to other thread participants when summarising or
+addressing them — resolve via the API, don't paste raw user IDs.
 
 **By user ID:**
 

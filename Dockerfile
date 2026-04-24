@@ -1,11 +1,15 @@
-FROM node:22-slim
+FROM node:22
 
 ARG HIMALAYA_VERSION=1.2.0
 ARG GOGCLI_VERSION=0.12.0
 ARG GLAB_VERSION=1.92.1
 
-RUN apt-get update && \
-    apt-get install -y curl ca-certificates python3 python3-requests python3-dotenv jq git gettext-base && \
+# Force apt metadata fetches over HTTPS so corp network middleboxes that
+# rewrite plain-HTTP traffic can't invalidate GPG signatures. ca-certificates
+# and curl are already in node:22 (full), so HTTPS works from the first call.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-requests python3-dotenv jq gettext-base && \
     rm -rf /var/lib/apt/lists/*
 
 # Install OpenClaw
@@ -54,6 +58,19 @@ COPY workspace/SOUL.md                /opt/gigaclaw/templates/SOUL.md
 COPY workspace/USER.md.tpl            /opt/gigaclaw/templates/USER.md
 COPY workspace/BOOT.md                /opt/gigaclaw/templates/BOOT.md
 COPY workspace/skills                 /opt/gigaclaw/skills
+
+# Custom OpenClaw channel plugin that bridges outbound messages to the
+# gigaclaw-orchestrator /push endpoint. See plugins.load.paths in patches.jq.
+# Plugin ships as TypeScript; compile here against the already-global
+# openclaw install (it's huge, so we symlink instead of re-installing it
+# per-plugin). Only dev deps (typescript, @types/node) land in node_modules.
+COPY packages/openclaw-orchestrator-channel /opt/gigaclaw/extensions/orchestrator-channel
+RUN cd /opt/gigaclaw/extensions/orchestrator-channel && \
+    npm install --no-audit --no-fund && \
+    mkdir -p node_modules && \
+    ln -s /usr/local/lib/node_modules/openclaw node_modules/openclaw && \
+    npm run build && \
+    rm -rf node_modules
 
 COPY scripts/provision.sh    /usr/local/bin/provision
 COPY scripts/entrypoint.sh   /usr/local/bin/entrypoint

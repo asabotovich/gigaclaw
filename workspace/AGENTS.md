@@ -44,8 +44,8 @@ Before doing anything else:
 
 1. Read `SOUL.md` — this is who you are
 2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+3. List `memory/` (e.g. `ls memory/`) and read today's + yesterday's `YYYY-MM-DD.md` **only if they exist** — a fresh container has an empty `memory/`, that's normal, skip silently
+4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md` if it exists
 5. **If session started in a Mattermost thread** (you have a `threadId` in context): read the thread history using the `mattermost` skill before replying — the conversation already happened, catch up silently
 
 Don't ask permission. Just do it.
@@ -180,6 +180,26 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 Local notes (accounts, addresses) go in `TOOLS.md`.
 
+**🖼 Image attachments from Mattermost:** when a user sends a picture,
+the orchestrator saves it under `/root/.openclaw/media/` and adds a line
+to the envelope, for example:
+
+```
+[attached image: /root/.openclaw/media/inbound/<postid>_<fileid>.png (image/png) name="screenshot.png"]
+```
+
+The default chat model doesn't do vision — to actually see the image
+call the `image` tool with the path verbatim:
+
+```
+image(prompt="what is on the picture?", image="/root/.openclaw/media/inbound/<postid>_<fileid>.png")
+```
+
+That routes through OpenClaw's separate vision model (qwen3-vl) and
+returns a description. If the user asks "что на картинке" or similar,
+always use the tool — don't guess from context. Supported formats:
+PNG, JPEG, GIF, WEBP, HEIC, SVG.
+
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
 **📝 Platform Formatting:**
@@ -261,7 +281,7 @@ You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it
 
 Periodically (every few days), use a heartbeat to:
 
-1. Read through recent `memory/YYYY-MM-DD.md` files
+1. List `memory/` and read through recent `YYYY-MM-DD.md` files (skip if dir is empty)
 2. Identify significant events, lessons, or insights worth keeping long-term
 3. Update `MEMORY.md` with distilled learnings
 4. Remove outdated info from MEMORY.md that's no longer relevant
@@ -277,81 +297,103 @@ survives restarts, is visible in the dashboard, and can deliver results back
 to the chat. The container auto-pairs the in-container CLI at startup
 (`self-pair-cli`), so `openclaw cron add/list/rm` work out of the box.
 
-### Pick a recipe by *where* the user asked
+### Delivery goes through the `orchestrator` channel, not `mattermost`
 
-There are three places the user can ask from. Each has one correct recipe.
-Pick the right one, copy, fill in the `--name` / schedule / `--message`.
+This container has no `mattermost` channel configured at all — inbound comes
+in via `/v1/responses` from the orchestrator, outbound leaves via the
+`orchestrator` channel plugin which bridges back to the external
+gigaclaw-orchestrator (standalone TS service on the host).
 
-#### (1) DM with the owner
+### Recurring crons: use `--session isolated` (no --session-key)
 
-Resolve the owner id once:
+Every inbound envelope carries this hint:
 
-```bash
-MM_TOKEN=$(jq -r '.channels.mattermost.botToken' /root/.openclaw/openclaw.json)
-MM_URL=$(jq -r '.channels.mattermost.baseUrl' /root/.openclaw/openclaw.json)
-OWNER_USERNAME=$(jq -r '.channels.mattermost.allowFrom[0]' /root/.openclaw/openclaw.json)
-OWNER_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/username/$OWNER_USERNAME" | jq -r '.id')
+```
+[session_target: mattermost:<kind>:<id>[:thread:<root>]]     ← use for --to
 ```
 
-Then:
+For `--every` / `--cron` (repeating), create the job like this:
+
+```bash
+openclaw cron add \
+  --name "Jokes" \
+  --every "5m" \
+  --session isolated \
+  --message "..." \
+  --announce --channel orchestrator --to "<paste [session_target] here>"
+```
+
+Why `isolated` + no `--session-key`:
+
+- OpenClaw has a 24h direct-delivery dedup cache keyed on
+  `runSessionId + channel + to + threadId`. If every tick shares a
+  sessionId (which happens when a cron is pinned to a thread/DM
+  session via `--session current --session-key`), tick #2+ silently
+  gets dropped — the cache says "already delivered" and openclaw
+  never reaches the orchestrator plugin. Only the first tick lands
+  in Mattermost.
+- `--session isolated` creates a fresh session each tick → fresh
+  sessionId → fresh idempotency key → every tick really ships.
+- Avoid passing `--session-key` at all here. Known openclaw bug
+  (github issue #58083): when a cron is created from a chat
+  session, the chat's session-key can leak onto the job even
+  with `--session isolated`, defeating the isolation. Silent omission
+  is the safest path.
+
+Trade-off: each tick lands in its own jsonl (`cron:<jobId>:run:<id>`),
+so the agent has no memory of previous ticks. That's fine for
+independent content (random fact, timer ping). If you need continuity
+between ticks, persist what matters to `memory/` files.
+
+Example for a thread in a channel:
+
+```bash
+openclaw cron add \
+  --name "Quatrains" \
+  --every "5m" \
+  --session isolated \
+  --message "Come up with a random quatrain. Return only the quatrain as plain text." \
+  --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
+```
+
+### One-shot crons (`--at`): `--session current` is fine
+
+For a single firing (reminders, `--at 30m`), there's no dedup
+pressure — one tick, one delivery, cache doesn't matter. Use
+`--session current --session-key <paste [session_key] here>` to have
+the output land in the same thread's jsonl as normal chat. Example:
+
+```bash
+openclaw cron add \
+  --name "Remind about PR review" \
+  --at "30m" \
+  --session current \
+  --session-key "<paste [session_key] here>" \
+  --message "Remind the user to review PR 42." \
+  --announce --channel orchestrator --to "<paste [session_target] here>"
+```
+
+### Cron delivered *somewhere else*
+
+If the user explicitly says "в другой канал", "в ЛС владельца", "post
+to #general" — build the `--to` target yourself (session-key isn't
+needed for recurring crons, so no second string to build):
+
+| Destination               | --to (session_target)                                    |
+|---|---|
+| Owner's DM                | `mattermost:direct:$ADMIN_USER_ID`                       |
+| Channel root              | `mattermost:channel:<channel_id>`                        |
+| Private group             | `mattermost:group:<channel_id>`                          |
+| Inside a thread           | append `:thread:<root_post_id>` to any of the above      |
 
 ```bash
 openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
   --session isolated \
-  --message "Find a random beaver fact from the web and return it as plain text." \
-  --announce --channel mattermost --to "user:$OWNER_ID"
+  --message "Find a random beaver fact. Return only the fact as plain text." \
+  --announce --channel orchestrator --to "mattermost:direct:$ADMIN_USER_ID"
 ```
-
-#### (2) Channel root — only when the user explicitly asked for it
-
-Use this recipe **only** when the user said something like «в канал»,
-«в общий чат», «пусть все видят», «post to #general». If the user just
-happens to be in a channel (or in a thread inside it) and didn't
-specifically ask for channel-root posting — use recipe (1) or (3)
-instead. Default: cron posts never belong in the channel root.
-
-When you do use it, take `<channelId>` from the triggering message
-context.
-
-```bash
-openclaw cron add \
-  --name "Cheese facts" \
-  --every "10m" \
-  --session isolated \
-  --message "Find a random cheese fact and return it in Russian." \
-  --announce --channel mattermost --to "channel:<channelId>"
-```
-
-#### (3) Inside a thread
-
-**Step 1 — get the session key.** Call the `session_status` tool. Its output
-contains one line like this:
-
-```
-🧵 Session: agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira • updated just now
-```
-
-Take everything between `Session: ` and ` •`. That's your session key.
-
-**Step 2 — create the job.** Paste that key after `session:` in the
-`--session` flag. The double `session:` is correct (first is the flag
-prefix, second is literally the first word of the key — don't normalize).
-**No** `--announce / --channel / --to` — session routing handles delivery:
-
-```bash
-openclaw cron add \
-  --name "Beaver facts" \
-  --every "10m" \
-  --session "session:agent:main:mattermost:group:nxxpqcifr7nmbezzsdyudxganh:thread:f6sxqyjgdbnnjrh8gbaf4apira" \
-  --message "Find a random beaver fact from the web and return it as plain text."
-```
-
-If the key is rejected or runs still land in channel root, don't pick
-a target silently — ask the user: «не получилось привязать к треду —
-слать в DM или в канал?» and use recipe (1) or (2) per their answer.
 
 ### Schedule types (use with any recipe above)
 

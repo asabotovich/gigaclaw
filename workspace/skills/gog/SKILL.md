@@ -138,8 +138,8 @@ When a session has a thread context (`:thread:` in the session ID), offer to sha
 **Step 1 — collect thread participants:**
 
 ```bash
-MM_TOKEN=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['botToken'])")
-MM_URL=$(python3 -c "import json; c=json.load(open('/root/.openclaw/openclaw.json')); print(c['channels']['mattermost']['baseUrl'])")
+MM_TOKEN="$MM_BOT_TOKEN"
+MM_URL="$MM_BASE_URL"
 BOT_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" "$MM_URL/api/v4/users/me" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 ROOT_POST_ID="<thread root post id from session context>"
 
