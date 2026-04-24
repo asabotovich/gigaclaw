@@ -304,40 +304,46 @@ in via `/v1/responses` from the orchestrator, outbound leaves via the
 `orchestrator` channel plugin which bridges back to the external
 gigaclaw-orchestrator (standalone TS service on the host).
 
-### Cron in "the same place we're talking" — persistent session
+### Recurring crons: use `--session isolated` (no --session-key)
 
-Every inbound envelope carries two matched hints:
+Every inbound envelope carries this hint:
 
 ```
 [session_target: mattermost:<kind>:<id>[:thread:<root>]]     ← use for --to
-[session_key: agent:main:mattermost:<kind>:<id>[:thread:<root>]]  ← use for --session-key
 ```
 
-When the user wants a cron delivered here (same channel / thread / DM),
-**copy both strings verbatim** and use them together with
-`--session current`:
+For `--every` / `--cron` (repeating), create the job like this:
 
 ```bash
 openclaw cron add \
   --name "Jokes" \
   --every "5m" \
-  --session current \
-  --session-key "<paste [session_key] here>" \
+  --session isolated \
   --message "..." \
   --announce --channel orchestrator --to "<paste [session_target] here>"
 ```
 
-Why this combo:
+Why `isolated` + no `--session-key`:
 
-- `--session current` tells OpenClaw "reuse an existing session, don't
-  make a new isolated one per run" (no `forceNew`).
-- `--session-key` names the exact session — the user's thread / DM.
-  Each tick runs IN that session, so the agent's output is persisted
-  as a real assistant turn in the same jsonl as the user's inbound
-  messages. Next time the user writes, you can see what the cron did.
-- `--announce --channel orchestrator --to` is the separate MM delivery
-  (the message the user actually sees in the chat). The session-level
-  persistence above and the MM-level announce are independent.
+- OpenClaw has a 24h direct-delivery dedup cache keyed on
+  `runSessionId + channel + to + threadId`. If every tick shares a
+  sessionId (which happens when a cron is pinned to a thread/DM
+  session via `--session current --session-key`), tick #2+ silently
+  gets dropped — the cache says "already delivered" and openclaw
+  never reaches the orchestrator plugin. Only the first tick lands
+  in Mattermost.
+- `--session isolated` creates a fresh session each tick → fresh
+  sessionId → fresh idempotency key → every tick really ships.
+- Avoid passing `--session-key` at all here. Known openclaw bug
+  (github issue #58083): when a cron is created from a chat
+  session, the chat's session-key can leak onto the job even
+  with `--session isolated`, defeating the isolation. Silent omission
+  is the safest path.
+
+Trade-off: each tick lands in its own jsonl (`cron:<jobId>:run:<id>`),
+so the agent has no memory of previous ticks. That's fine for
+independent content (random fact, timer ping). If you need continuity
+between ticks, persist what matters to `memory/` files.
 
 Example for a thread in a channel:
 
@@ -345,16 +351,33 @@ Example for a thread in a channel:
 openclaw cron add \
   --name "Quatrains" \
   --every "5m" \
-  --session current \
-  --session-key "agent:main:mattermost:channel:nxxp...:thread:pdde..." \
+  --session isolated \
   --message "Come up with a random quatrain. Return only the quatrain as plain text." \
   --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
+```
+
+### One-shot crons (`--at`): `--session current` is fine
+
+For a single firing (reminders, `--at 30m`), there's no dedup
+pressure — one tick, one delivery, cache doesn't matter. Use
+`--session current --session-key <paste [session_key] here>` to have
+the output land in the same thread's jsonl as normal chat. Example:
+
+```bash
+openclaw cron add \
+  --name "Remind about PR review" \
+  --at "30m" \
+  --session current \
+  --session-key "<paste [session_key] here>" \
+  --message "Remind the user to review PR 42." \
+  --announce --channel orchestrator --to "<paste [session_target] here>"
 ```
 
 ### Cron delivered *somewhere else*
 
 If the user explicitly says "в другой канал", "в ЛС владельца", "post
-to #general" — build the target yourself. Shape:
+to #general" — build the `--to` target yourself (session-key isn't
+needed for recurring crons, so no second string to build):
 
 | Destination               | --to (session_target)                                    |
 |---|---|
@@ -363,26 +386,14 @@ to #general" — build the target yourself. Shape:
 | Private group             | `mattermost:group:<channel_id>`                          |
 | Inside a thread           | append `:thread:<root_post_id>` to any of the above      |
 
-`--session-key` is the same string with an `agent:main:` prefix, e.g.
-`agent:main:mattermost:direct:$ADMIN_USER_ID`.
-
 ```bash
 openclaw cron add \
   --name "Beaver facts" \
   --every "10m" \
-  --session current \
-  --session-key "agent:main:mattermost:direct:$ADMIN_USER_ID" \
+  --session isolated \
   --message "Find a random beaver fact. Return only the fact as plain text." \
   --announce --channel orchestrator --to "mattermost:direct:$ADMIN_USER_ID"
 ```
-
-### When to keep using `--session isolated` instead
-
-Only for fire-and-forget crons where you explicitly do NOT want the
-output in the conversation history — e.g. running diagnostics that
-would just be noise in the chat. 99% of "put X here every N minutes"
-requests want `--session current` with the target's session-key, not
-isolated.
 
 ### Schedule types (use with any recipe above)
 
