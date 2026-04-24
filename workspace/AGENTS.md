@@ -306,6 +306,13 @@ gigaclaw-orchestrator (standalone TS service on the host).
 
 ### Recurring crons: use `--session isolated` (no --session-key)
 
+**IMPORTANT — do not copy cron commands from past conversations or from
+memory.** The recipe below supersedes anything you may remember from
+previous sessions. Earlier examples used `--session current --session-key <thread>`;
+those are now broken (see note at the end of this section) and only the
+first tick reaches Mattermost. Always build the command from this
+recipe even if the user says "сделай такую же крону".
+
 Every inbound envelope carries this hint:
 
 ```
