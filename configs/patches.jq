@@ -2,6 +2,7 @@
 | .models.mode                                  = "replace"
 | .models.providers.openrouter.baseUrl          = "https://openrouter.ai/api/v1"
 | .models.providers.openrouter.apiKey           = env.OPENROUTER_API_KEY
+| .models.providers.openrouter.api              = "openai-completions"
 | .models.providers.openrouter.models           = [
     {id: env.LLM_MODEL,                           name: env.LLM_MODEL},
     {id: env.LLM_VISION_MODEL,                    name: env.LLM_VISION_MODEL,                    input: ["text", "image"]},
