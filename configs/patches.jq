@@ -61,7 +61,6 @@
 | .agents.defaults.timeoutSeconds         = 1800
 
 | .messages.ackReactionScope              = "group-mentions"
-| .messages.queue.mode                    = "queue"
 | .commands.native                        = "auto"
 | .commands.nativeSkills                  = "auto"
 | .commands.restart                       = true
