@@ -16,10 +16,18 @@
     "openrouter/qwen/qwen3-vl-32b-instruct":                       {alias: "qwen3-vl-32b"},
     "openrouter/nvidia/nemotron-nano-12b-v2-vl:free":              {alias: "nemotron-vl-free"}
   }
-| .agents.defaults.imageModel.primary           = ("openrouter/" + env.LLM_VISION_MODEL)
+
+# Workaround for openclaw issue #8096 — built-in openrouter image path
+# returns "Image model returned no text" even when the model itself works.
+# Our orchestrator-channel plugin registers a parallel media-understanding
+# provider with id="openrouter-direct" that hits /chat/completions itself.
+# Clone the provider config so model resolution succeeds and route imageModel
+# to it; primary text routing keeps using the built-in "openrouter".
+| .models.providers["openrouter-direct"]        = .models.providers.openrouter
+| .agents.defaults.imageModel.primary           = ("openrouter-direct/" + env.LLM_VISION_MODEL)
 | .agents.defaults.imageModel.fallbacks         = [
-    "openrouter/qwen/qwen3-vl-32b-instruct",
-    "openrouter/nvidia/nemotron-nano-12b-v2-vl:free"
+    "openrouter-direct/qwen/qwen3-vl-32b-instruct",
+    "openrouter-direct/nvidia/nemotron-nano-12b-v2-vl:free"
   ]
 
 | .gateway.port                                         = 18789
