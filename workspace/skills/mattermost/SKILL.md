@@ -33,31 +33,121 @@ Strip the leading `#` before using it in API calls:
 CHANNEL_ID="de76e8ba16da8c3b98a26adb206bf8cf"  # paste the ID from context, without #
 ```
 
+## Attachments in history
+
+The history snippets below download every attachment (images and files
+alike) referenced by `file_ids` on each post into
+`/root/.openclaw/media/inbound/<post_id>_<file_id><ext>` — the same
+allowed media root the live inbound pipeline uses. Each saved
+attachment prints under its post as a marker line:
+
+```
+[attached image: /root/.openclaw/media/inbound/<file> (<mime>) name="..."]
+[attached file:  /root/.openclaw/media/inbound/<file> (<mime>) name="..."]
+[attachment skipped: name="..." (<mime>) size=NB reason=too_large|fetch_failed|fetch_cap]
+```
+
+What to do per marker:
+- **`attached image`** → feed the path into the `image` tool (vision) for
+  description; include those descriptions when summarising the
+  thread/channel so the user gets what was on the screenshot.
+- **`attached file`** → pick the right tool by mime: `Read` for
+  text/csv/json/md, `pdftotext` (if installed) for PDF, the
+  media-understanding API for audio/video. Do not pretend you read it
+  if no skill is available — say so explicitly.
+- **`attachment skipped`** → mention in the reply that the attachment
+  existed but was unreachable for the listed reason.
+
+Caps used by the snippets:
+- per file: 10 MB (history can be heavy; oversize files are skipped)
+- per fetch: 15 attachments total across all posts
+
 ## Channel History
 
-Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, `@username`, and text. The snippet resolves `user_id` → `username` in bulk via `POST /users/ids` in one extra call, so output never contains raw IDs:
+Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, `@username`, and text. The snippet resolves `user_id` → `username` in bulk via `POST /users/ids` in one extra call, so output never contains raw IDs. Attachments are downloaded under each post as described above:
 
 ```bash
 CHANNEL_ID="<paste id without #>"
 PER_PAGE=30
 python3 <<'PY'
-import os, json, urllib.request, datetime
+import os, json, re, urllib.request, datetime
 MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+MEDIA_DIR = '/root/.openclaw/media/inbound'
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENTS_TOTAL = 15
+EXT_BY_MIME = {
+    'image/jpeg':'.jpg','image/png':'.png','image/gif':'.gif','image/webp':'.webp',
+    'image/heic':'.heic','image/heif':'.heif','image/svg+xml':'.svg',
+    'application/pdf':'.pdf','application/json':'.json','text/plain':'.txt','text/csv':'.csv',
+    'audio/mpeg':'.mp3','audio/wav':'.wav','audio/x-m4a':'.m4a',
+    'video/mp4':'.mp4','video/quicktime':'.mov',
+}
 def api(method, path, body=None):
     req = urllib.request.Request(MM_URL + path,
         data=json.dumps(body).encode() if body is not None else None,
         headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
         method=method)
     return json.load(urllib.request.urlopen(req))
+def get_bytes(file_id):
+    req = urllib.request.Request(MM_URL + f'/api/v4/files/{file_id}',
+        headers={'Authorization': f'Bearer {TOK}'})
+    return urllib.request.urlopen(req).read()
+def ext_for(mime, hint, name):
+    if hint:
+        h = hint if hint.startswith('.') else '.' + hint
+        if 1 < len(h) <= 8: return h
+    if mime in EXT_BY_MIME: return EXT_BY_MIME[mime]
+    if name and '.' in name:
+        e = os.path.splitext(name)[1]
+        if e: return e
+    tail = mime.split('/')[-1] if '/' in mime else mime
+    tail = re.sub(r'[^a-z0-9]', '', tail) or 'bin'
+    return '.' + tail
+def fetch_attachments(post, counter):
+    fids = post.get('file_ids') or []
+    if not fids: return []
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    lines = []
+    for fid in fids:
+        if counter[0] >= MAX_ATTACHMENTS_TOTAL:
+            lines.append(f'    [attachment skipped: id={fid} reason=fetch_cap]')
+            continue
+        try:
+            info = api('GET', f'/api/v4/files/{fid}/info')
+            mime = info.get('mime_type','') or ''
+            name = info.get('name','') or fid
+            size = info.get('size', 0) or 0
+            if size > MAX_FILE_BYTES:
+                lines.append(f'    [attachment skipped: name={json.dumps(name)} ({mime}) size={size}B reason=too_large]')
+                continue
+            data = get_bytes(fid)
+            if len(data) > MAX_FILE_BYTES:
+                lines.append(f'    [attachment skipped: name={json.dumps(name)} ({mime}) size={len(data)}B reason=too_large]')
+                continue
+            ext = ext_for(mime, info.get('extension',''), name)
+            fname = f'{post["id"]}_{fid}{ext}'
+            path = os.path.join(MEDIA_DIR, fname)
+            with open(path, 'wb') as f: f.write(data)
+            os.chmod(path, 0o600)
+            kind = 'attached image' if mime.startswith('image/') else 'attached file'
+            lines.append(f'    [{kind}: {path} ({mime}) name={json.dumps(name)}]')
+            counter[0] += 1
+        except Exception as e:
+            lines.append(f'    [attachment skipped: id={fid} reason=fetch_failed ({type(e).__name__})]')
+    return lines
+
 posts = api('GET', f'/api/v4/channels/{os.environ["CHANNEL_ID"]}/posts?per_page={os.environ["PER_PAGE"]}')
 uids = sorted({p['user_id'] for p in posts['posts'].values() if p.get('user_id')})
 users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+counter = [0]
 for pid in reversed(posts.get('order', [])):
     p = posts['posts'][pid]
     u = users.get(p.get('user_id'), {})
     name = u.get('username') or p.get('user_id') or '?'
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
     print(f'{ts}  @{name}: {p.get("message", "")}')
+    for line in fetch_attachments(p, counter):
+        print(line)
 PY
 ```
 
@@ -72,17 +162,76 @@ The current thread's root post ID is available in the session context (OpenClaw 
 ```bash
 ROOT_POST_ID="<paste root post id here>"
 python3 <<'PY'
-import os, json, urllib.request, datetime
+import os, json, re, urllib.request, datetime
 MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+MEDIA_DIR = '/root/.openclaw/media/inbound'
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENTS_TOTAL = 15
+EXT_BY_MIME = {
+    'image/jpeg':'.jpg','image/png':'.png','image/gif':'.gif','image/webp':'.webp',
+    'image/heic':'.heic','image/heif':'.heif','image/svg+xml':'.svg',
+    'application/pdf':'.pdf','application/json':'.json','text/plain':'.txt','text/csv':'.csv',
+    'audio/mpeg':'.mp3','audio/wav':'.wav','audio/x-m4a':'.m4a',
+    'video/mp4':'.mp4','video/quicktime':'.mov',
+}
 def api(method, path, body=None):
     req = urllib.request.Request(MM_URL + path,
         data=json.dumps(body).encode() if body is not None else None,
         headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
         method=method)
     return json.load(urllib.request.urlopen(req))
+def get_bytes(file_id):
+    req = urllib.request.Request(MM_URL + f'/api/v4/files/{file_id}',
+        headers={'Authorization': f'Bearer {TOK}'})
+    return urllib.request.urlopen(req).read()
+def ext_for(mime, hint, name):
+    if hint:
+        h = hint if hint.startswith('.') else '.' + hint
+        if 1 < len(h) <= 8: return h
+    if mime in EXT_BY_MIME: return EXT_BY_MIME[mime]
+    if name and '.' in name:
+        e = os.path.splitext(name)[1]
+        if e: return e
+    tail = mime.split('/')[-1] if '/' in mime else mime
+    tail = re.sub(r'[^a-z0-9]', '', tail) or 'bin'
+    return '.' + tail
+def fetch_attachments(post, counter):
+    fids = post.get('file_ids') or []
+    if not fids: return []
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    lines = []
+    for fid in fids:
+        if counter[0] >= MAX_ATTACHMENTS_TOTAL:
+            lines.append(f'    [attachment skipped: id={fid} reason=fetch_cap]')
+            continue
+        try:
+            info = api('GET', f'/api/v4/files/{fid}/info')
+            mime = info.get('mime_type','') or ''
+            name = info.get('name','') or fid
+            size = info.get('size', 0) or 0
+            if size > MAX_FILE_BYTES:
+                lines.append(f'    [attachment skipped: name={json.dumps(name)} ({mime}) size={size}B reason=too_large]')
+                continue
+            data = get_bytes(fid)
+            if len(data) > MAX_FILE_BYTES:
+                lines.append(f'    [attachment skipped: name={json.dumps(name)} ({mime}) size={len(data)}B reason=too_large]')
+                continue
+            ext = ext_for(mime, info.get('extension',''), name)
+            fname = f'{post["id"]}_{fid}{ext}'
+            path = os.path.join(MEDIA_DIR, fname)
+            with open(path, 'wb') as f: f.write(data)
+            os.chmod(path, 0o600)
+            kind = 'attached image' if mime.startswith('image/') else 'attached file'
+            lines.append(f'    [{kind}: {path} ({mime}) name={json.dumps(name)}]')
+            counter[0] += 1
+        except Exception as e:
+            lines.append(f'    [attachment skipped: id={fid} reason=fetch_failed ({type(e).__name__})]')
+    return lines
+
 thread = api('GET', f'/api/v4/posts/{os.environ["ROOT_POST_ID"]}/thread')
 uids = sorted({p['user_id'] for p in thread['posts'].values() if p.get('user_id')})
 users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+counter = [0]
 for pid in thread.get('order', []):
     p = thread['posts'][pid]
     u = users.get(p.get('user_id'), {})
@@ -90,6 +239,8 @@ for pid in thread.get('order', []):
     ts = datetime.datetime.fromtimestamp(p.get('create_at', 0) // 1000).strftime('%Y-%m-%d %H:%M')
     indent = '  ↳ ' if p.get('root_id') else ''
     print(f'{ts}  {indent}@{name}: {p.get("message", "")}')
+    for line in fetch_attachments(p, counter):
+        print(line)
 PY
 ```
 
