@@ -7,7 +7,9 @@
     {id: env.LLM_MODEL,                           name: env.LLM_MODEL},
     {id: env.LLM_VISION_MODEL,                    name: env.LLM_VISION_MODEL,                    input: ["text", "image"]},
     {id: "qwen/qwen3-vl-32b-instruct",            name: "qwen/qwen3-vl-32b-instruct",            input: ["text", "image"]},
-    {id: "nvidia/nemotron-nano-12b-v2-vl:free",   name: "nvidia/nemotron-nano-12b-v2-vl:free",   input: ["text", "image"]}
+    {id: "nvidia/nemotron-nano-12b-v2-vl:free",   name: "nvidia/nemotron-nano-12b-v2-vl:free",   input: ["text", "image"]},
+    {id: "qwen/qwen3-next-80b-a3b-instruct",      name: "qwen/qwen3-next-80b-a3b-instruct"},
+    {id: "qwen/qwen3-235b-a22b-2507",             name: "qwen/qwen3-235b-a22b-2507"}
   ]
 | .agents.defaults.model.primary                = ("openrouter/" + env.LLM_MODEL)
 | .agents.defaults.models                       = {
@@ -60,6 +62,40 @@
 | .agents.defaults.subagents.maxConcurrent = 8
 | .agents.defaults.timeoutSeconds         = 1800
 
+# Memory search: hybrid BM25 + vector embeddings.
+# We pin to BAAI's bge-m3 (1024-dim, multilingual, 8k ctx) — solid
+# Russian retrieval, deployed by half the open-source RAG ecosystem,
+# and present in BOTH OpenRouter (used here) AND cloud.ru Evolution
+# Foundation Models. So when the project migrates off OpenRouter to
+# cloud.ru's Sber-perimeter inference, only `model` (drop the `baai/`
+# vendor prefix) and `remote.baseUrl` change — the index format and
+# vector dimensions stay identical.
+# `provider: "openai"` selects the OpenAI-compatible adapter; the
+# `remote` block points it at OpenRouter's /v1/embeddings endpoint
+# without touching the chat-side `models.providers.openrouter` config.
+# Together with `experimental.sessionMemory` + `sources: ["memory",
+# "sessions"]` the agent semantically recalls MEMORY.md, memory/*.md,
+# AND past session transcripts ("о чём говорили про CISO" finds the
+# thread). MMR removes near-duplicate hits; temporal decay (30-day
+# half-life) keeps recent context above stale notes — MEMORY.md is
+# evergreen and never decayed.
+| .agents.defaults.memorySearch = {
+    provider: "openai",
+    model: "baai/bge-m3",
+    remote: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: env.OPENROUTER_API_KEY
+    },
+    experimental: { sessionMemory: true },
+    sources: ["memory", "sessions"],
+    query: {
+      hybrid: {
+        mmr: { enabled: true },
+        temporalDecay: { enabled: true }
+      }
+    }
+  }
+
 | .messages.ackReactionScope              = "group-mentions"
 | .commands.native                        = "auto"
 | .commands.nativeSkills                  = "auto"
@@ -71,8 +107,48 @@
 | .hooks.internal.entries["session-memory"].enabled        = true
 | .hooks.internal.entries["boot-md"].enabled               = true
 
-| .plugins.allow                          = ["orchestrator"]
+| .plugins.allow                          = ["orchestrator", "openrouter", "perplexity", "memory-core", "active-memory"]
 | .plugins.entries.orchestrator.enabled   = true
+| .plugins.entries["memory-core"].enabled = true
+| .plugins.entries["active-memory"].enabled = true
+# Active memory: blocking sub-agent runs before every reply where the
+# bot is engaged (DM and @-mention in groups/channels), queries
+# MEMORY.md / memory/*.md / session transcripts and injects relevant
+# bits into the main agent's context. Cuts the "the bot doesn't think
+# to recall what we discussed" problem at the root.
+# In channels/groups the bot only replies on @-mentions, so the
+# sub-agent fires only on those — bounded fan-out, no per-message
+# overhead on every channel post.
+# Pinned to Qwen3-Next-80B-A3B-Instruct because:
+# 1. The default (session primary) glm-4.7 was timing out 100% of runs
+#    in pilot logs — it's a reasoning model that burned the entire 15s
+#    budget on internal <thinking> before getting to summary.
+# 2. We need a non-reasoning Instruct model that answers directly.
+# 3. The model has to exist on BOTH OpenRouter (we use now) AND
+#    cloud.ru Evolution (planned migration target). gemini/claude/gpt
+#    are openrouter-only — pinning to them would force a model swap
+#    when we migrate. Qwen3 family is on both.
+# 4. MoE architecture (80B params, 3B activated) gives ~2s response
+#    time at very low cost — perfect fit for "find relevant chunks
+#    and summarize in 220 chars".
+# 5. 262K context easily fits workspace files + memory chunks.
+# 6. Strong Russian language coverage (verified against bot prompts).
+# When migrating to cloud.ru: drop the "openrouter/" prefix and use
+# "Qwen3-Next-80B-A3B-Instruct" (cloud.ru's model id form). Same model.
+| .plugins.entries["active-memory"].config = {
+    enabled: true,
+    agents: ["main"],
+    allowedChatTypes: ["direct", "group", "channel"],
+    model: "openrouter/qwen/qwen3-next-80b-a3b-instruct",
+    modelFallback: "openrouter/qwen/qwen3-235b-a22b-2507",
+    modelFallbackPolicy: "default-remote",
+    queryMode: "recent",
+    promptStyle: "recall-heavy",
+    timeoutMs: 15000,
+    maxSummaryChars: 220,
+    persistTranscripts: false,
+    logging: true
+  }
 | .plugins.load.paths                     = ["/opt/gigaclaw/extensions"]
 
 | .channels.orchestrator.enabled          = true

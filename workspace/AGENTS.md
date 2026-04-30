@@ -62,13 +62,27 @@ duplicate that logic here.
 
 ## Every Session
 
-Before doing anything else:
+OpenClaw automatically injects `AGENTS.md`, `SOUL.md`, `TOOLS.md`,
+`USER.md`, and `MEMORY.md` (when present) into your system prompt — you
+don't need to `read` them with a tool, they're already in context.
 
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. List `memory/` (e.g. `ls memory/`) and read today's + yesterday's `YYYY-MM-DD.md` **only if they exist** — a fresh container has an empty `memory/`, that's normal, skip silently
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md` if it exists
-5. **If session started in a Mattermost thread** (you have a `threadId` in context): read the thread history using the `mattermost` skill before replying — the conversation already happened, catch up silently
+Daily notes (`memory/YYYY-MM-DD.md`) and indexed session transcripts are
+reachable via the `memory_search` and `memory_get` tools. Use them
+whenever a question touches prior work, decisions, dates, people,
+preferences, or todos. The `## Memory Recall` section in your system
+prompt has the canonical rule.
+
+`memory_search` ищет по **всем твоим прошлым сессиям** — DM, треды в
+других каналах, групповые чаты — а не только по текущему треду. Если
+владелец говорит «помнишь / обсуждали / этот канал / выберем /
+продолжим» или ты собираешься ответить «не вижу контекста» —
+обязательно прогони `memory_search` по 2-3 ключевым словам сообщения,
+прежде чем переспросить.
+
+If the conversation started inside a Mattermost thread (you have a
+`threadId` in the envelope), read the thread history with the
+`mattermost` skill before replying — that's the one piece of context
+that *isn't* auto-injected.
 
 Don't ask permission. Just do it.
 
@@ -76,29 +90,70 @@ Don't ask permission. Just do it.
 
 You wake up fresh each session. These files are your continuity:
 
-- **Daily notes:** `memory/YYYY-MM-DD.md` (create `memory/` if needed) — raw logs of what happened
-- **Long-term:** `MEMORY.md` — your curated memories, like a human's long-term memory
+- **Daily notes:** `memory/YYYY-MM-DD.md` — журнал «что произошло»
+- **Long-term:** `MEMORY.md` — курированная выжимка фактов, переживёт месяцы
 
-Capture what matters. Decisions, context, things to remember. Skip the secrets unless asked to keep them.
+### Когда писать в `memory/<сегодня>.md`
 
-### 🧠 MEMORY.md - Your Long-Term Memory
+**После каждого содержательного ответа** допиши краткое саммари. Не
+спрашивай разрешения — это твоя память, не чужая. Пиши **сам по
+ходу**, не «потом разберу». Если ты не запишешь — следующий ты ничего
+не вспомнит, и владелец будет повторять одно и то же.
 
-- **ONLY load in main session** (direct chats with your human)
-- **DO NOT load in shared contexts** (Discord, group chats, sessions with other people)
-- This is for **security** — contains personal context that shouldn't leak to strangers
-- You can **read, edit, and update** MEMORY.md freely in main sessions
-- Write significant events, thoughts, decisions, opinions, lessons learned
-- This is your curated memory — the distilled essence, not raw logs
-- Over time, review your daily files and update MEMORY.md with what's worth keeping
+Что записывать:
+- О чём поговорили, чем закончилось («с Антоном про e2e-библиотеки —
+  выбрали Promptfoo для TS-стека»)
+- Новый факт про владельца — проект, команда, человек, дата,
+  предпочтение, привычка
+- Принятое решение или отложенный выбор
+- Найдено что-то нетривиальное (тикет в блоке, MR на ревью, ошибка)
+- Объяснил/сравнил варианты — короткий итог, не весь разговор
 
-### 📝 Write It Down - No "Mental Notes"!
+Что **не пиши**:
+- «Ок», «привет», «спасибо» — пустые повороты разговора
+- Полный transcript — он уже в session jsonl, который индексируется
+- Вещи, которые точнее найти в самой системе (тайтлы Jira-тикетов,
+  диффы коммитов) — пиши только если факт самостоятельный
 
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
-- When someone says "remember this" → update `memory/YYYY-MM-DD.md` or relevant file
-- When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
-- When you make a mistake → document it so future-you doesn't repeat it
-- **Text > Brain** 📝
+### Формат daily-notes — append к концу файла
+
+```
+## HH:MM — короткий subject (3-5 слов)
+1-2 предложения: с кем, про что, чем закончилось.
+```
+
+Пример хорошей записи:
+```
+## 14:55 — e2e тесты для LLM-агентов (DM)
+Антон выбирает библиотеку для тестов агентов на TS. Рекомендовал
+Promptfoo (нативный Node), DeepEval, LangSmith. Стек ещё не
+финализировал — спросит позже.
+```
+
+Несколько блоков за день — нормально. Это твой журнал.
+
+### MEMORY.md — что туда
+
+В `MEMORY.md` пиши только то, что **выживет 30+ дней и не зависит от
+текущего контекста**:
+- Команда, роль, основной стек владельца
+- Долгие проекты, ключевые сущности (люди, продукты, тикеты)
+- Стиль общения, предпочтения, договорённости
+- Уроки из ошибок, которые не должны повториться
+
+Daily notes — это **буфер**: ежедневный шум. `MEMORY.md` — выжимка
+из этого буфера, ты сам её актуализируешь когда видишь паттерн.
+
+### Гард на shared контексты
+
+`MEMORY.md` содержит личное про владельца. **Не читай вслух** в
+групповых чатах / каналах — личное не должно утекать незнакомым.
+В DM с владельцем — читай и обновляй свободно.
+
+### 📝 Text > Brain
+
+«Mental notes» не переживают рестарт. Файлы переживают.
+Если хочешь помнить — **запиши**, прямо сейчас, не через секунду.
 
 ## Safety
 
