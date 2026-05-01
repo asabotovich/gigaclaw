@@ -60,6 +60,40 @@
 | .agents.defaults.subagents.maxConcurrent = 8
 | .agents.defaults.timeoutSeconds         = 1800
 
+# Memory search: hybrid BM25 + vector embeddings.
+# We pin to BAAI's bge-m3 (1024-dim, multilingual, 8k ctx) — solid
+# Russian retrieval, deployed by half the open-source RAG ecosystem,
+# and present in BOTH OpenRouter (used here) AND cloud.ru Evolution
+# Foundation Models. So when the project migrates off OpenRouter to
+# cloud.ru's Sber-perimeter inference, only `model` (drop the `baai/`
+# vendor prefix) and `remote.baseUrl` change — the index format and
+# vector dimensions stay identical.
+# `provider: "openai"` selects the OpenAI-compatible adapter; the
+# `remote` block points it at OpenRouter's /v1/embeddings endpoint
+# without touching the chat-side `models.providers.openrouter` config.
+# Together with `experimental.sessionMemory` + `sources: ["memory",
+# "sessions"]` the agent semantically recalls MEMORY.md, memory/*.md,
+# AND past session transcripts ("о чём говорили про CISO" finds the
+# thread). MMR removes near-duplicate hits; temporal decay (30-day
+# half-life) keeps recent context above stale notes — MEMORY.md is
+# evergreen and never decayed.
+| .agents.defaults.memorySearch = {
+    provider: "openai",
+    model: "baai/bge-m3",
+    remote: {
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: env.OPENROUTER_API_KEY
+    },
+    experimental: { sessionMemory: true },
+    sources: ["memory", "sessions"],
+    query: {
+      hybrid: {
+        mmr: { enabled: true },
+        temporalDecay: { enabled: true }
+      }
+    }
+  }
+
 | .messages.ackReactionScope              = "group-mentions"
 | .commands.native                        = "auto"
 | .commands.nativeSkills                  = "auto"
@@ -71,8 +105,31 @@
 | .hooks.internal.entries["session-memory"].enabled        = true
 | .hooks.internal.entries["boot-md"].enabled               = true
 
-| .plugins.allow                          = ["orchestrator"]
+| .plugins.allow                          = ["orchestrator", "openrouter", "perplexity", "memory-core", "active-memory"]
 | .plugins.entries.orchestrator.enabled   = true
+| .plugins.entries["memory-core"].enabled = true
+| .plugins.entries["active-memory"].enabled = true
+# Active memory: blocking sub-agent runs before every reply where the
+# bot is engaged (DM and @-mention in groups/channels), queries
+# MEMORY.md / memory/*.md / session transcripts and injects relevant
+# bits into the main agent's context. Cuts the "the bot doesn't think
+# to recall what we discussed" problem at the root.
+# In channels/groups the bot only replies on @-mentions, so the
+# sub-agent fires only on those — bounded fan-out, no per-message
+# overhead on every channel post.
+# Inherits the session's primary model (no modelFallback) — switch to
+# a cheaper model here if per-message latency/cost becomes an issue.
+| .plugins.entries["active-memory"].config = {
+    enabled: true,
+    agents: ["main"],
+    allowedChatTypes: ["direct", "group", "channel"],
+    queryMode: "recent",
+    promptStyle: "balanced",
+    timeoutMs: 15000,
+    maxSummaryChars: 220,
+    persistTranscripts: false,
+    logging: true
+  }
 | .plugins.load.paths                     = ["/opt/gigaclaw/extensions"]
 
 | .channels.orchestrator.enabled          = true

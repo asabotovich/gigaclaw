@@ -40,13 +40,20 @@ duplicate that logic here.
 
 ## Every Session
 
-Before doing anything else:
+OpenClaw automatically injects `AGENTS.md`, `SOUL.md`, `TOOLS.md`,
+`USER.md`, and `MEMORY.md` (when present) into your system prompt — you
+don't need to `read` them with a tool, they're already in context.
 
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. List `memory/` (e.g. `ls memory/`) and read today's + yesterday's `YYYY-MM-DD.md` **only if they exist** — a fresh container has an empty `memory/`, that's normal, skip silently
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md` if it exists
-5. **If session started in a Mattermost thread** (you have a `threadId` in context): read the thread history using the `mattermost` skill before replying — the conversation already happened, catch up silently
+Daily notes (`memory/YYYY-MM-DD.md`) and indexed session transcripts are
+reachable via the `memory_search` and `memory_get` tools. Use them
+whenever a question touches prior work, decisions, dates, people,
+preferences, or todos. The `## Memory Recall` section in your system
+prompt has the canonical rule.
+
+If the conversation started inside a Mattermost thread (you have a
+`threadId` in the envelope), read the thread history with the
+`mattermost` skill before replying — that's the one piece of context
+that *isn't* auto-injected.
 
 Don't ask permission. Just do it.
 
