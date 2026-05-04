@@ -5,6 +5,16 @@ ARG HIMALAYA_VERSION=1.2.0
 ARG GOGCLI_VERSION=0.12.0
 ARG GLAB_VERSION=1.92.1
 
+# npm registry connections drop on flaky links (Docker Desktop vpnkit, corp
+# VPN, etc). These env vars apply to every npm call in this image: longer
+# fetch timeouts, more retries, fewer parallel sockets so each request gets
+# more bandwidth and is less likely to hit a connection cap.
+ENV NPM_CONFIG_FETCH_RETRIES=10
+ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
+ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=300000
+ENV NPM_CONFIG_FETCH_TIMEOUT=600000
+ENV NPM_CONFIG_MAXSOCKETS=2
+
 # Force apt metadata fetches over HTTPS so corp network middleboxes that
 # rewrite plain-HTTP traffic can't invalidate GPG signatures. ca-certificates
 # and curl are already in node:22 (full), so HTTPS works from the first call.
