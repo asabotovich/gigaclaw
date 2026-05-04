@@ -83,7 +83,7 @@ COPY packages/openclaw-orchestrator-channel /opt/gigaclaw/extensions/orchestrato
 # flags wait minutes instead of seconds before giving up.
 RUN --mount=type=cache,target=/root/.npm \
     cd /opt/gigaclaw/extensions/orchestrator-channel && \
-    npm install --no-audit --no-fund --prefer-offline \
+    npm install --no-audit --no-fund --prefer-offline --omit=peer \
       --fetch-retries=10 \
       --fetch-retry-mintimeout=20000 \
       --fetch-retry-maxtimeout=300000 \
