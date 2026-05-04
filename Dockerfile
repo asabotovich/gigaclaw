@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 FROM node:22
 
 ARG HIMALAYA_VERSION=1.2.0
@@ -65,8 +66,19 @@ COPY workspace/skills                 /opt/gigaclaw/skills
 # openclaw install (it's huge, so we symlink instead of re-installing it
 # per-plugin). Only dev deps (typescript, @types/node) land in node_modules.
 COPY packages/openclaw-orchestrator-channel /opt/gigaclaw/extensions/orchestrator-channel
-RUN cd /opt/gigaclaw/extensions/orchestrator-channel && \
-    npm install --no-audit --no-fund && \
+# BuildKit cache mount on /root/.npm survives across `docker build` runs, so a
+# transient ECONNRESET mid-install doesn't lose already-downloaded tarballs.
+# `--maxsockets=2` gentles parallel TCP — Docker Desktop's vpnkit/qemu network
+# tends to drop sustained registry connections on flaky links. The fetch-*
+# flags wait minutes instead of seconds before giving up.
+RUN --mount=type=cache,target=/root/.npm \
+    cd /opt/gigaclaw/extensions/orchestrator-channel && \
+    npm install --no-audit --no-fund --prefer-offline \
+      --fetch-retries=10 \
+      --fetch-retry-mintimeout=20000 \
+      --fetch-retry-maxtimeout=300000 \
+      --fetch-timeout=600000 \
+      --maxsockets=2 && \
     mkdir -p node_modules && \
     ln -s /usr/local/lib/node_modules/openclaw node_modules/openclaw && \
     npm run build && \
