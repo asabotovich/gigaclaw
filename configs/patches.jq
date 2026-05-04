@@ -63,16 +63,22 @@
 | .agents.defaults.timeoutSeconds         = 1800
 
 # Memory search: hybrid BM25 + vector embeddings.
-# We pin to BAAI's bge-m3 (1024-dim, multilingual, 8k ctx) — solid
-# Russian retrieval, deployed by half the open-source RAG ecosystem,
-# and present in BOTH OpenRouter (used here) AND cloud.ru Evolution
-# Foundation Models. So when the project migrates off OpenRouter to
-# cloud.ru's Sber-perimeter inference, only `model` (drop the `baai/`
-# vendor prefix) and `remote.baseUrl` change — the index format and
-# vector dimensions stay identical.
+# Pinned to BAAI/bge-m3 (1024-dim, multilingual, 8k ctx) — solid Russian
+# retrieval, deployed by half the open-source RAG ecosystem.
+# Embeddings provider: cloud.ru Evolution Foundation Models. We migrated
+# off OpenRouter because its bge-m3 is routed through Parasail, which
+# drops connections under the 4-way concurrent batches openclaw issues
+# during session-delta sync, blocking session indexing entirely (see
+# upstream #71522, #56815). cloud.ru hosts the same model directly,
+# 1024-dim → existing SQLite index stays valid, no reindex needed.
+# Chat-side LLM still goes through OpenRouter (separate concern); when
+# we move chat to cloud.ru too, only the active-memory model id and the
+# openrouter providers block change.
 # `provider: "openai"` selects the OpenAI-compatible adapter; the
-# `remote` block points it at OpenRouter's /v1/embeddings endpoint
-# without touching the chat-side `models.providers.openrouter` config.
+# `remote` block points it at cloud.ru's /v1/embeddings endpoint
+# independently of the chat-side `models.providers.*` config.
+# NOTE: cloud.ru is case-sensitive on the model id — must be
+# "BAAI/bge-m3" (capital BAAI), lowercase "baai/bge-m3" returns 404.
 # Together with `experimental.sessionMemory` + `sources: ["memory",
 # "sessions"]` the agent semantically recalls MEMORY.md, memory/*.md,
 # AND past session transcripts ("о чём говорили про CISO" finds the
@@ -81,10 +87,10 @@
 # evergreen and never decayed.
 | .agents.defaults.memorySearch = {
     provider: "openai",
-    model: "baai/bge-m3",
+    model: "BAAI/bge-m3",
     remote: {
-      baseUrl: "https://openrouter.ai/api/v1",
-      apiKey: env.OPENROUTER_API_KEY
+      baseUrl: "https://foundation-models.api.cloud.ru/v1",
+      apiKey: env.CLOUDRU_API_KEY
     },
     experimental: { sessionMemory: true },
     sources: ["memory", "sessions"],
