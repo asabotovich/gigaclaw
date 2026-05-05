@@ -129,6 +129,24 @@ echo "- URL: $URL" >> "$USER_DOCS"
 echo "- Shared with: (nobody yet)" >> "$USER_DOCS"
 ```
 
+The owner of the new file is the shared `gigamegaclaw@gmail.com`
+account — **no Mattermost user can open the link until you share it
+explicitly.** Before sending the URL back to the user, run one of the
+share flows below.
+
+---
+
+### Auto-share newly created docs
+
+The shared `gigamegaclaw@gmail.com` account owns the file — without
+sharing, the link lands on "Request access". Always share by link
+right after creating:
+
+```bash
+gog drive share "$FILE_ID" --type anyone --role writer >/dev/null
+echo "- Shared with: anyone with link (writer)" >> "$USER_DOCS"
+```
+
 ---
 
 ### If the document was created inside a Mattermost thread
