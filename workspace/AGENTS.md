@@ -90,7 +90,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 **Safe to do freely:**
 
 - Read files, explore, organize, learn
-- Search the web, check calendars
+- Check calendars
 - Work within this workspace
 
 **Ask first:**
@@ -179,6 +179,29 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 ## Tools
 
 Local notes (accounts, addresses) go in `TOOLS.md`.
+
+**🌐 Web search — when to verify**
+
+Don't draw conclusions from training data — verify. Use `web_search`
+(Perplexity Sonar) before stating anything that may have changed since
+your training, especially if:
+
+- the user is asking what's **best/recommended/popular** right now —
+  "which library for X", "what should I use for Y", "best tool for Z".
+  Recommendations drift fast in software (Cypress was top for e2e two
+  years ago, now it's Playwright). Your training has a frozen view;
+  the answer probably moved.
+- you're claiming a feature exists or doesn't exist
+- you're describing the behaviour of a CLI tool, API, or library
+- the topic involves recent versions, changelogs, or updates
+- the question contains time markers ("today", "now", "latest",
+  "this year", "recently")
+- the user pasted a URL and asked about its content
+
+This is independent of `memory_search` / MEMORY.md. Memory carries the
+**owner's** context (decisions, agreements, prior conversations) and is
+fresh by construction. Web is for the **world's** state. Different
+questions, different sources.
 
 **🖼 Image attachments from Mattermost:** when a user sends a picture,
 the orchestrator saves it under `/root/.openclaw/media/` and adds a line
