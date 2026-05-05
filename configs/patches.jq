@@ -85,6 +85,24 @@
 # thread). MMR removes near-duplicate hits; temporal decay (30-day
 # half-life) keeps recent context above stale notes — MEMORY.md is
 # evergreen and never decayed.
+# Sync + query tuning addresses two bugs observed empirically (см. ниже):
+#
+# Bug A — session-delta sync ленится. Дефолты deltaBytes=100KB и
+# deltaMessages=50 — пока сессия не накопит столько, sessionsDirty=false и
+# sync пропускается. Mattermost-турн обычно 0.5-2KB → дельта тригерится
+# раз в 30-50 сообщений. До тех пор новые чанки в индекс не попадают.
+# Хук session-memory тут НЕ при чём — он только для /new и /reset.
+#
+# Bug B — memory_search tool возвращает меньше/хуже результатов чем CLI.
+# Корень: long-lived gateway держит MemoryManager в памяти, а
+# startAsyncSearchSync — fire-and-forget (kick + не дожидается).
+# Итог: tool бьёт по stale snapshot пока async sync догоняет диск.
+# CLI спавнит свежий процесс → первый sync блокирующий → видит свежее.
+# См. openclaw issues #52115, #4868, #19913, #12633.
+#
+# Лекарство — заставить sessionsDirty взводиться часто (deltaBytes=1,
+# deltaMessages=1) + добавить periodic safety-net (intervalMinutes=5)
+# + расширить query-pool и понизить minScore чтобы релевант не отсекался.
 | .agents.defaults.memorySearch = {
     provider: "openai",
     model: "BAAI/bge-m3",
@@ -94,9 +112,24 @@
     },
     experimental: { sessionMemory: true },
     sources: ["memory", "sessions"],
+    sync: {
+      onSessionStart: true,
+      onSearch: true,
+      watch: true,
+      watchDebounceMs: 250,
+      intervalMinutes: 5,
+      sessions: {
+        deltaBytes: 1,
+        deltaMessages: 1,
+        postCompactionForce: true
+      }
+    },
     query: {
+      maxResults: 10,
+      minScore: 0.2,
       hybrid: {
-        mmr: { enabled: true },
+        candidateMultiplier: 8,
+        mmr: { enabled: true, lambda: 0.7 },
         temporalDecay: { enabled: true }
       }
     }
@@ -148,10 +181,29 @@
     model: "openrouter/qwen/qwen3-next-80b-a3b-instruct",
     modelFallback: "openrouter/qwen/qwen3-235b-a22b-2507",
     modelFallbackPolicy: "default-remote",
-    queryMode: "recent",
+    # queryMode "message" вместо "recent" — отрезаем от запроса хвост
+    # из последних turn'ов, в котором уже есть наши собственные
+    # <active_memory_plugin>-инъекции; они засоряют embedding-поиск
+    # и заставляют sub-agent'а выбирать прошлый recall вместо
+    # реального факта из MEMORY.md/sessions.
+    queryMode: "message",
+    # recall-heavy — несмотря на название — содержит инструкцию
+    # "if the connection is weak, broad, reply with NONE", и
+    # qwen3-next-instruct (non-reasoning) читает её буквально.
+    # promptOverride переопределяет дефолт целиком на агрессивно
+    # recall-ориентированный текст, который форсит вызов
+    # memory_search/memory_get и НЕ позволяет вернуть NONE без
+    # хотя бы одной попытки поиска.
     promptStyle: "recall-heavy",
-    timeoutMs: 15000,
+    promptOverride: "You are a memory recall agent. Another model is preparing the user-facing reply and depends on you to surface relevant memory.\n\nMandatory procedure for every request:\n1. Call memory_search with the user's latest message as the query (translate Russian queries 1:1, do not paraphrase).\n2. If the top hit has score >= 0.30 OR contains a name, number, code-word, project, preference, habit, or personal fact — call memory_get to read the full chunk.\n3. Summarize the recovered fact in one compact plain-text line under 220 characters, written as a third-person memory note about the user (e.g. \"User's favorite number is 731 and code word синий-кит\").\n\nReturn NONE only when memory_search returns zero results OR the top hit is clearly off-topic (different domain, different entity, score below 0.20). Do not return NONE just because the match feels soft — soft matches are exactly what you should surface.\n\nDo not answer the user. Do not explain reasoning. Do not output bullets, JSON, XML, markdown, or labels. Output is either the literal token NONE or one plain-text sentence — nothing else.",
+    # 25s — sub-agent делает search + (возможно) get + summarize.
+    # На builtin backend с 86 чанками + холодным embedding-кэшем
+    # 15s ловит timeout (видели один кейс 29061ms).
+    timeoutMs: 25000,
     maxSummaryChars: 220,
+    # thinking off — qwen3-next-instruct и так non-reasoning;
+    # включение reasoning гарантированно выжжет budget.
+    thinking: "off",
     persistTranscripts: false,
     logging: true
   }
