@@ -24,49 +24,32 @@ user supplies a token, you already know the URL from the config — just save
 the token and proceed. Do NOT ask "what's the URL?" unless the corresponding
 field is genuinely absent from `openclaw.json`.
 
-**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
+**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*` — credentials live here, nowhere else.
 
-**Always read credentials from the config at the start of each exec call** — do
-not rely on them being in `process.env`. OpenClaw's `env` injection only happens
-at gateway startup, so tokens saved mid-session need a restart OR the
-read-each-call pattern below.
+You don't need to export anything. The skill auto-syncs `os.environ` from
+this config block on every `import scripts.*` (see `scripts/__init__.py`),
+so a fresh shell spawned by your next `exec` call always sees the current
+token without any gateway restart.
 
-Expected paths in `openclaw.json`:
-- `skills.entries.atlassian.env.JIRA_URL`
-- `skills.entries.atlassian.env.JIRA_PAT_TOKEN`
-- `skills.entries.atlassian.env.CONFLUENCE_URL`
-- `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN`
-- `skills.entries.atlassian.env.JIRA_SSL_VERIFY` / `CONFLUENCE_SSL_VERIFY` (usually `"true"`)
-
-### Boilerplate for every call
+### Calling the skill
 
 ```bash
-CFG=/root/.openclaw/openclaw.json
-export JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' "$CFG")
-export JIRA_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.JIRA_PAT_TOKEN // empty' "$CFG")
-export JIRA_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.JIRA_SSL_VERIFY // "true"' "$CFG")
-export CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' "$CFG")
-export CONFLUENCE_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN // empty' "$CFG")
-export CONFLUENCE_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_SSL_VERIFY // "true"' "$CFG")
-
 cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
 from scripts.jira_search import jira_search
-import json
-print(jira_search(jql='...'))
+print(jira_search(jql='project = VIBE'))
 "
 ```
 
-Each `exec` tool call starts a fresh shell → fresh env from config → always uses current token. **No gateway restart needed.**
+That's it — no `export`, no `jq`, no env shuffling. The wrappers read
+config-backed env via `os.getenv` internally.
 
 ### If a token is missing
 
-Ask the user for it (with the link to generate), then save:
+Save it (the autoload picks it up on the next call):
 
 ```bash
 openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<token>"
 ```
-
-After `config set` — immediately re-read and re-export using the boilerplate above; the very next call works.
 
 **Never echo tokens back to the user, even partially.**
 
