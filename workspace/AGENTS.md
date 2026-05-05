@@ -401,19 +401,16 @@ openclaw cron add \
   --announce --channel orchestrator --to "mattermost:channel:nxxp...:thread:pdde..."
 ```
 
-### One-shot crons (`--at`): `--session current` is fine
+### One-shot crons (`--at`)
 
-For a single firing (reminders, `--at 30m`), there's no dedup
-pressure — one tick, one delivery, cache doesn't matter. Use
-`--session current --session-key <paste [session_key] here>` to have
-the output land in the same thread's jsonl as normal chat. Example:
+Use `--session isolated`, no `--session-key`. The `--to` in
+`--announce` decides where the reminder lands.
 
 ```bash
 openclaw cron add \
   --name "Remind about PR review" \
   --at "30m" \
-  --session current \
-  --session-key "<paste [session_key] here>" \
+  --session isolated \
   --message "Remind the user to review PR 42." \
   --announce --channel orchestrator --to "<paste [session_target] here>"
 ```
