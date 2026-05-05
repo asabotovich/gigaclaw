@@ -24,49 +24,45 @@ user supplies a token, you already know the URL from the config — just save
 the token and proceed. Do NOT ask "what's the URL?" unless the corresponding
 field is genuinely absent from `openclaw.json`.
 
-**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*`.
+**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*` — credentials live here, nowhere else.
 
-**Always read credentials from the config at the start of each exec call** — do
-not rely on them being in `process.env`. OpenClaw's `env` injection only happens
-at gateway startup, so tokens saved mid-session need a restart OR the
-read-each-call pattern below.
+You don't need to export anything. The skill auto-syncs `os.environ` from
+this config block on every `import scripts.*` (see `scripts/__init__.py`),
+so a fresh shell spawned by your next `exec` call always sees the current
+token without any gateway restart.
 
-Expected paths in `openclaw.json`:
-- `skills.entries.atlassian.env.JIRA_URL`
-- `skills.entries.atlassian.env.JIRA_PAT_TOKEN`
-- `skills.entries.atlassian.env.CONFLUENCE_URL`
-- `skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN`
-- `skills.entries.atlassian.env.JIRA_SSL_VERIFY` / `CONFLUENCE_SSL_VERIFY` (usually `"true"`)
-
-### Boilerplate for every call
+### Calling the skill
 
 ```bash
-CFG=/root/.openclaw/openclaw.json
-export JIRA_URL=$(jq -r '.skills.entries.atlassian.env.JIRA_URL // empty' "$CFG")
-export JIRA_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.JIRA_PAT_TOKEN // empty' "$CFG")
-export JIRA_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.JIRA_SSL_VERIFY // "true"' "$CFG")
-export CONFLUENCE_URL=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_URL // empty' "$CFG")
-export CONFLUENCE_PAT_TOKEN=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_PAT_TOKEN // empty' "$CFG")
-export CONFLUENCE_SSL_VERIFY=$(jq -r '.skills.entries.atlassian.env.CONFLUENCE_SSL_VERIFY // "true"' "$CFG")
-
 cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
 from scripts.jira_search import jira_search
-import json
-print(jira_search(jql='...'))
+print(jira_search(jql='project = VIBE'))
 "
 ```
 
-Each `exec` tool call starts a fresh shell → fresh env from config → always uses current token. **No gateway restart needed.**
+That's it — no `export`, no `jq`, no env shuffling. The wrappers read
+config-backed env via `os.getenv` internally.
+
+### Discovering the API
+
+If you're not sure a function exists or what it accepts, list everything:
+
+```bash
+cd /root/.openclaw/workspace/skills/atlassian && python3 -m scripts._list_functions
+```
+
+Output is generated from the source — never stale, never wrong.
+Prefer it over guessing names from memory: e.g. there is no
+`confluence_get_page_by_id`; the actual call is
+`confluence_get_page(page_id=...)`. The list will show this directly.
 
 ### If a token is missing
 
-Ask the user for it (with the link to generate), then save:
+Save it (the autoload picks it up on the next call):
 
 ```bash
 openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<token>"
 ```
-
-After `config set` — immediately re-read and re-export using the boilerplate above; the very next call works.
 
 **Never echo tokens back to the user, even partially.**
 
@@ -262,6 +258,10 @@ result = confluence_create_page(
 ```
 
 ## Available Utilities
+
+> The grouped examples below are illustrative. For the **complete,
+> always-current** list of functions and signatures, run
+> `python3 -m scripts._list_functions` in the skill directory.
 
 ### Jira Issue Management (`scripts.jira_issues`)
 
@@ -469,118 +469,6 @@ from scripts.confluence_labels import (
 # Manage labels
 confluence_add_label(page_id="12345", name="reviewed")
 confluence_remove_label(page_id="12345", name="draft")
-```
-
-### Bitbucket Projects (`scripts.bitbucket_projects`)
-
-```python
-from scripts.bitbucket_projects import (
-    bitbucket_list_projects,
-    bitbucket_list_repositories
-)
-
-# List all projects
-bitbucket_list_projects(limit=25)
-
-# List repositories in a project
-bitbucket_list_repositories(project_key="PROJ", limit=50)
-```
-
-### Bitbucket Pull Requests (`scripts.bitbucket_pull_requests`)
-
-```python
-from scripts.bitbucket_pull_requests import (
-    bitbucket_create_pull_request,
-    bitbucket_get_pull_request,
-    bitbucket_merge_pull_request,
-    bitbucket_decline_pull_request,
-    bitbucket_add_pr_comment,
-    bitbucket_get_pr_diff
-)
-
-# Create a pull request
-bitbucket_create_pull_request(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    title="Feature: Add new API",
-    source_branch="feature/new-api",
-    target_branch="master",
-    description="Implements the new API endpoint",
-    reviewers=["john.doe", "jane.smith"]
-)
-
-# Get PR details
-bitbucket_get_pull_request(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    pr_id=123
-)
-
-# Merge PR (version from get_pull_request)
-bitbucket_merge_pull_request(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    pr_id=123,
-    version=5,
-    strategy="squash"
-)
-
-# Add comment to PR
-bitbucket_add_pr_comment(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    pr_id=123,
-    text="LGTM!"
-)
-```
-
-### Bitbucket Files & Search (`scripts.bitbucket_files`)
-
-```python
-from scripts.bitbucket_files import (
-    bitbucket_get_file_content,
-    bitbucket_search
-)
-
-# Get file content
-bitbucket_get_file_content(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    file_path="src/main.py",
-    branch="develop"
-)
-
-# Search code
-bitbucket_search(
-    query="def authenticate",
-    project_key="PROJ",
-    search_type="code",
-    limit=25
-)
-```
-
-### Bitbucket Commits (`scripts.bitbucket_commits`)
-
-```python
-from scripts.bitbucket_commits import (
-    bitbucket_get_commits,
-    bitbucket_get_commit
-)
-
-# Get recent commits from a branch
-bitbucket_get_commits(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    branch="master",
-    limit=10
-)
-
-# Get details of a specific commit
-bitbucket_get_commit(
-    project_key="PROJ",
-    repository_slug="my-repo",
-    commit_id="1da11eaec25aed8b251de24841885c91493b3173"
-)
 ```
 
 ### Jira Users (`scripts.jira_users`)
