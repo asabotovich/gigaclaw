@@ -94,45 +94,79 @@ Export raw MIME:
 himalaya message export 42 --full
 ```
 
-### Reply to an Email
+### Reply / Forward / Send — non-interactive (this is the only mode that works for bots)
 
-Interactive reply (opens $EDITOR):
+`himalaya message reply` and `himalaya message forward` accept the body
+as a positional argument. **No `$EDITOR` involved, the message is sent
+directly.** This is the path bots must use — there is no terminal to
+open an editor in.
+
+Reply:
 ```bash
-himalaya message reply 42
+himalaya message reply 42 "Body of the reply."
+himalaya message reply 42 --all "Body."                  # reply-all
+himalaya message reply 42 -H "Cc:user@example.com" "Body."
 ```
 
-Reply-all:
+Forward:
 ```bash
-himalaya message reply 42 --all
+himalaya message forward 42 -H "To:recipient@example.com" "Optional comment."
 ```
 
-### Forward an Email
-
+New message:
 ```bash
-himalaya message forward 42
+himalaya message send -H "To:recipient@example.com" -H "Subject:Hello" "Body."
 ```
 
-### Write a New Email
+#### Confirming the message was actually sent
 
-Interactive compose (opens $EDITOR):
-```bash
-himalaya message write
+A non-zero exit code means failure, but **exit 0 alone is not enough** —
+several `himalaya` subcommands print drafts to stdout and exit 0 without
+sending anything. The send was real **only** if stdout contains the
+literal string:
+
+```
+Message successfully sent!
 ```
 
-Send directly using template:
-```bash
-cat << 'EOF' | himalaya template send
-From: you@example.com
-To: recipient@example.com
-Subject: Test Message
+If you don't see that line, treat the operation as failed and retry —
+do not tell the user "отправлено" / "переслано" prematurely.
 
-Hello from Himalaya!
-EOF
+#### Antipatterns
+
+**Don't use `himalaya template reply` / `himalaya template forward`
+when you actually want to send.** Those subcommands only render the
+draft template to stdout — exit 0 + non-empty stdout is normal output,
+**not delivery**. If you must use the template flow, pipe the result
+into `himalaya template send` (which actually delivers and prints
+`Message successfully sent!`):
+
+```bash
+himalaya template forward 42 \
+  | sed '0,/^$/{s/^To: */&recipient@example.com/}' \
+  | himalaya template send
 ```
 
-Or with headers flag:
+But for ordinary cases prefer the direct `message reply` / `message
+forward` form above — fewer ways to get it wrong.
+
+**Don't try to override `From:` via `-H` or in a template.** The sender
+address is taken from `~/.config/himalaya/config.toml` (`accounts.<name>.email`).
+Setting `From:` to anything else is rejected by SMTP (e.g. `550 not
+local sender over smtp` from mail.ru) — you can only send as the
+configured account.
+
+**Don't pipe a heredoc with `To:` into `himalaya template forward
+<id>`.** The heredoc is consumed as the **body**, not as headers. The
+forwarded message ends up with an empty `To:` and goes nowhere. Use
+`-H "To:..."` arguments instead, as shown above.
+
+### Interactive aliases (won't work in bot exec — for human reference only)
+
 ```bash
-himalaya message write -H "To:recipient@example.com" -H "Subject:Test" "Message body here"
+himalaya message reply 42        # opens $EDITOR
+himalaya message forward 42      # opens $EDITOR
+himalaya message write           # opens $EDITOR
 ```
 
 ### Move/Copy Emails
