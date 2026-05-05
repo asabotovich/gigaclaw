@@ -43,6 +43,19 @@ print(jira_search(jql='project = VIBE'))
 That's it — no `export`, no `jq`, no env shuffling. The wrappers read
 config-backed env via `os.getenv` internally.
 
+### Discovering the API
+
+If you're not sure a function exists or what it accepts, list everything:
+
+```bash
+cd /root/.openclaw/workspace/skills/atlassian && python3 -m scripts._list_functions
+```
+
+Output is generated from the source — never stale, never wrong.
+Prefer it over guessing names from memory: e.g. there is no
+`confluence_get_page_by_id`; the actual call is
+`confluence_get_page(page_id=...)`. The list will show this directly.
+
 ### If a token is missing
 
 Save it (the autoload picks it up on the next call):
@@ -245,6 +258,10 @@ result = confluence_create_page(
 ```
 
 ## Available Utilities
+
+> The grouped examples below are illustrative. For the **complete,
+> always-current** list of functions and signatures, run
+> `python3 -m scripts._list_functions` in the skill directory.
 
 ### Jira Issue Management (`scripts.jira_issues`)
 
