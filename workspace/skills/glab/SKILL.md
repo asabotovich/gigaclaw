@@ -85,6 +85,44 @@ View MR diff:
 glab mr diff 55
 ```
 
+## Find MRs that need your attention
+
+To find MRs where you're involved, **don't roll your own filter** —
+GitLab's `scope` parameter handles it. Three canonical scopes:
+
+| Scope            | What it returns                              |
+| ---------------- | -------------------------------------------- |
+| `created_by_me`  | MRs you opened                               |
+| `assigned_to_me` | MRs where you're an assignee                 |
+| `reviews_for_me` | MRs where you're assigned as a **reviewer**  |
+
+### Global search (across every project you have access to)
+
+```bash
+# All MRs awaiting your review:
+glab api 'merge_requests?scope=reviews_for_me&state=opened&per_page=50' \
+  | jq -r '.[] | "\(.web_url) — \(.title)"'
+
+# MRs you opened that are still open:
+glab api 'merge_requests?scope=created_by_me&state=opened&per_page=50' \
+  | jq -r '.[] | "\(.web_url) — \(.title)"'
+```
+
+### Per-repo (when scope is fixed)
+
+`glab mr list` accepts `--reviewer`, `--assignee`, `--author` with
+`@me` shorthand:
+
+```bash
+glab mr list --reviewer @me --repo group/project
+glab mr list --assignee @me --repo group/project
+```
+
+> **Antipattern**: querying `merge_requests` without `scope` and writing
+> a hand-rolled jq filter on `.author.username` / `.assignees[]` /
+> `.reviewers[]`. It's easy to miss one of the three arrays — exactly
+> the bug the `scope` parameter was added to prevent.
+
 ## CI/CD Pipelines
 
 Check pipeline status for current branch:
