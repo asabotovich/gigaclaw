@@ -32,6 +32,26 @@ envsubst "$ALLOW" < "$TPL/TOOLS.md"  > "$WS/TOOLS.md"
 [ -f "$WS/USER.md" ] || envsubst "$ALLOW" < "$TPL/USER.md" > "$WS/USER.md"
 [ -f "$WS/SOUL.md" ] || cp "$TPL/SOUL.md" "$WS/SOUL.md"
 
+# MEMORY.md and HEARTBEAT.md must EXIST as readable files so OpenClaw's
+# bootstrap auto-injection picks them up and the agent's `read` calls
+# don't ENOENT-spam the logs. Empty seeds are fine — the bot fills them
+# over time. Don't overwrite if already present.
+[ -f "$WS/MEMORY.md" ] || cat > "$WS/MEMORY.md" <<'MEMEOF'
+# MEMORY.md — long-term memory
+
+_Curate facts here that are worth keeping past one conversation. Daily
+context goes into `memory/YYYY-MM-DD.md`; this file is the distilled
+essence — preferences, decisions, things the owner asked you to
+remember._
+MEMEOF
+
+[ -f "$WS/HEARTBEAT.md" ] || cat > "$WS/HEARTBEAT.md" <<'HBEOF'
+# HEARTBEAT.md
+
+_Add a short checklist here for what to check on every heartbeat
+ping. Empty file means "just reply HEARTBEAT_OK"._
+HBEOF
+
 # --- BOOT.md: always overwrite. Triggers on gateway startup via boot-md hook.
 #     Content changes between releases must take effect immediately on reset,
 #     so we re-render every provision (no runtime state lives inside BOOT.md).
