@@ -153,20 +153,20 @@ echo "- Shared with: anyone with link (writer)" >> "$USER_DOCS"
 
 When a session has a thread context (`:thread:` in the session ID), offer to share the document with all thread participants automatically — they are already in the conversation.
 
-**Step 1 — collect thread participants:**
+**Step 1 — collect thread participants** (one orchestrator round-trip;
+filters out the bot itself via `$MM_BOT_USER_ID` from the env):
 
 ```bash
-MM_TOKEN="$MM_BOT_TOKEN"
-MM_URL="$MM_BASE_URL"
-BOT_ID=$(curl -sf -H "Authorization: Bearer $MM_TOKEN" "$MM_URL/api/v4/users/me" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 ROOT_POST_ID="<thread root post id from session context>"
 
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/posts/$ROOT_POST_ID/thread" \
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"root_post_id\":\"$ROOT_POST_ID\"}" \
+  "$ORCHESTRATOR_URL/read/thread" \
   | python3 -c "
-import json, sys
+import json, sys, os
 data = json.load(sys.stdin)
-bot = '$BOT_ID'
+bot = os.environ.get('MM_BOT_USER_ID', '')
 seen = set()
 for p in data.get('posts', {}).values():
     uid = p['user_id']
@@ -176,13 +176,20 @@ for p in data.get('posts', {}).values():
 "
 ```
 
-**Step 2 — resolve user IDs to emails:**
+**Step 2 — resolve user IDs to emails** (single batch lookup for all
+collected ids):
 
 ```bash
-# For each USER_ID obtained above:
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/$USER_ID" \
-  | python3 -c "import json,sys; u=json.load(sys.stdin); print(u['username'], u.get('email',''))"
+USER_IDS_JSON='["uid1","uid2","uid3"]'   # paste the ids from step 1
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"user_ids\":$USER_IDS_JSON}" \
+  "$ORCHESTRATOR_URL/read/users-by-ids" \
+  | python3 -c "
+import json, sys
+for u in json.load(sys.stdin):
+    print(u['username'], u.get('email',''))
+"
 ```
 
 **Step 3 — ask and share:**
