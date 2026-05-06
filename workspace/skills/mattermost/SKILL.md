@@ -1,9 +1,9 @@
 ---
 name: mattermost
-description: "Mattermost REST API access: fetch channel message history, read thread replies, get user info, check online status, list channel members. Use when asked about channel history, thread content, user details, or who is online."
+description: "Mattermost data access via the orchestrator's read proxy: channel history, thread replies, user info, online status, channel members, file info. Use when asked about channel history, thread content, user details, or who is online."
 ---
 
-# Mattermost REST API
+# Mattermost (read-side)
 
 Use this skill when the user asks to:
 - show recent messages / history in a channel
@@ -14,23 +14,24 @@ Use this skill when the user asks to:
 
 ## Prerequisites
 
-Token and base URL are already in the container's environment — no config
-lookup needed:
+Reads go through the orchestrator's `/read/*` proxy — the container does
+not hold a Mattermost token. Two env vars are already set:
 
 ```bash
-MM_TOKEN="$MM_BOT_TOKEN"
-MM_URL="$MM_BASE_URL"
+ORCH="$ORCHESTRATOR_URL"            # e.g. http://host.docker.internal:18790
+ORCH_AUTH="Bearer $ORCHESTRATOR_PUSH_SECRET"
 ```
 
-Run both lines at the start of every session that uses this skill.
+Run both at the start of every session that uses this skill.
 
 ## Channel ID
 
-The channel ID is available in your session context — it looks like `#de76e8ba16da8c3b98a26adb206bf8cf`.
-Strip the leading `#` before using it in API calls:
+The channel ID is available in your session context — it looks like
+`#de76e8ba16da8c3b98a26adb206bf8cf`. Strip the leading `#` before using
+it:
 
 ```bash
-CHANNEL_ID="de76e8ba16da8c3b98a26adb206bf8cf"  # paste the ID from context, without #
+CHANNEL_ID="de76e8ba16da8c3b98a26adb206bf8cf"  # paste id from context, without #
 ```
 
 ## Attachments in history
@@ -64,14 +65,19 @@ Caps used by the snippets:
 
 ## Channel History
 
-Fetch the last N messages (default: 30). Messages are printed oldest-first with timestamp, `@username`, and text. The snippet resolves `user_id` → `username` in bulk via `POST /users/ids` in one extra call, so output never contains raw IDs. Attachments are downloaded under each post as described above:
+Fetch the last N messages (default: 30). Messages are printed
+oldest-first with timestamp, `@username`, and text. The snippet resolves
+`user_id` → `username` in bulk via `/read/users-by-ids` in one extra
+call, so output never contains raw IDs. Attachments are downloaded under
+each post as described above:
 
 ```bash
 CHANNEL_ID="<paste id without #>"
 PER_PAGE=30
 python3 <<'PY'
 import os, json, re, urllib.request, datetime
-MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+ORCH = os.environ['ORCHESTRATOR_URL']
+AUTH = f"Bearer {os.environ['ORCHESTRATOR_PUSH_SECRET']}"
 MEDIA_DIR = '/root/.openclaw/media/inbound'
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENTS_TOTAL = 15
@@ -82,15 +88,17 @@ EXT_BY_MIME = {
     'audio/mpeg':'.mp3','audio/wav':'.wav','audio/x-m4a':'.m4a',
     'video/mp4':'.mp4','video/quicktime':'.mov',
 }
-def api(method, path, body=None):
-    req = urllib.request.Request(MM_URL + path,
-        data=json.dumps(body).encode() if body is not None else None,
-        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
-        method=method)
+def read(path, body):
+    req = urllib.request.Request(ORCH + path,
+        data=json.dumps(body).encode(),
+        headers={'Authorization': AUTH, 'Content-Type': 'application/json'},
+        method='POST')
     return json.load(urllib.request.urlopen(req))
 def get_bytes(file_id):
-    req = urllib.request.Request(MM_URL + f'/api/v4/files/{file_id}',
-        headers={'Authorization': f'Bearer {TOK}'})
+    req = urllib.request.Request(ORCH + '/read/file-bytes',
+        data=json.dumps({'file_id': file_id}).encode(),
+        headers={'Authorization': AUTH, 'Content-Type': 'application/json'},
+        method='POST')
     return urllib.request.urlopen(req).read()
 def ext_for(mime, hint, name):
     if hint:
@@ -113,7 +121,7 @@ def fetch_attachments(post, counter):
             lines.append(f'    [attachment skipped: id={fid} reason=fetch_cap]')
             continue
         try:
-            info = api('GET', f'/api/v4/files/{fid}/info')
+            info = read('/read/file-info', {'file_id': fid})
             mime = info.get('mime_type','') or ''
             name = info.get('name','') or fid
             size = info.get('size', 0) or 0
@@ -136,9 +144,12 @@ def fetch_attachments(post, counter):
             lines.append(f'    [attachment skipped: id={fid} reason=fetch_failed ({type(e).__name__})]')
     return lines
 
-posts = api('GET', f'/api/v4/channels/{os.environ["CHANNEL_ID"]}/posts?per_page={os.environ["PER_PAGE"]}')
+posts = read('/read/channel-history', {
+    'channel_id': os.environ['CHANNEL_ID'],
+    'per_page': int(os.environ['PER_PAGE']),
+})
 uids = sorted({p['user_id'] for p in posts['posts'].values() if p.get('user_id')})
-users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+users = {u['id']: u for u in read('/read/users-by-ids', {'user_ids': uids})} if uids else {}
 counter = [0]
 for pid in reversed(posts.get('order', [])):
     p = posts['posts'][pid]
@@ -151,19 +162,21 @@ for pid in reversed(posts.get('order', [])):
 PY
 ```
 
-To fetch more messages, raise `PER_PAGE` (max 200). To page further back, add `&before=<post_id>` to the URL.
+To fetch more messages, raise `PER_PAGE` (max 200). To page further back,
+add a `before` field to the body: `{'channel_id': ..., 'per_page': N, 'before': '<post_id>'}`.
 
 ## Thread History
 
-A thread in Mattermost is a chain of replies under a single root post. Use `GET /api/v4/posts/{post_id}/thread` where `post_id` is the **root post ID** of the thread.
-
-The current thread's root post ID is available in the session context (OpenClaw sets `replyToMode: first`, so each thread has its own session). Ask the user to paste the root post URL or ID if it is not clear from context.
+A thread in Mattermost is a chain of replies under a single root post.
+The current thread's root post ID is available in the session context.
+Ask the user to paste the root post URL or ID if it is not clear.
 
 ```bash
 ROOT_POST_ID="<paste root post id here>"
 python3 <<'PY'
 import os, json, re, urllib.request, datetime
-MM_URL, TOK = os.environ['MM_BASE_URL'], os.environ['MM_BOT_TOKEN']
+ORCH = os.environ['ORCHESTRATOR_URL']
+AUTH = f"Bearer {os.environ['ORCHESTRATOR_PUSH_SECRET']}"
 MEDIA_DIR = '/root/.openclaw/media/inbound'
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENTS_TOTAL = 15
@@ -174,15 +187,17 @@ EXT_BY_MIME = {
     'audio/mpeg':'.mp3','audio/wav':'.wav','audio/x-m4a':'.m4a',
     'video/mp4':'.mp4','video/quicktime':'.mov',
 }
-def api(method, path, body=None):
-    req = urllib.request.Request(MM_URL + path,
-        data=json.dumps(body).encode() if body is not None else None,
-        headers={'Authorization': f'Bearer {TOK}', 'Content-Type': 'application/json'},
-        method=method)
+def read(path, body):
+    req = urllib.request.Request(ORCH + path,
+        data=json.dumps(body).encode(),
+        headers={'Authorization': AUTH, 'Content-Type': 'application/json'},
+        method='POST')
     return json.load(urllib.request.urlopen(req))
 def get_bytes(file_id):
-    req = urllib.request.Request(MM_URL + f'/api/v4/files/{file_id}',
-        headers={'Authorization': f'Bearer {TOK}'})
+    req = urllib.request.Request(ORCH + '/read/file-bytes',
+        data=json.dumps({'file_id': file_id}).encode(),
+        headers={'Authorization': AUTH, 'Content-Type': 'application/json'},
+        method='POST')
     return urllib.request.urlopen(req).read()
 def ext_for(mime, hint, name):
     if hint:
@@ -205,7 +220,7 @@ def fetch_attachments(post, counter):
             lines.append(f'    [attachment skipped: id={fid} reason=fetch_cap]')
             continue
         try:
-            info = api('GET', f'/api/v4/files/{fid}/info')
+            info = read('/read/file-info', {'file_id': fid})
             mime = info.get('mime_type','') or ''
             name = info.get('name','') or fid
             size = info.get('size', 0) or 0
@@ -228,9 +243,9 @@ def fetch_attachments(post, counter):
             lines.append(f'    [attachment skipped: id={fid} reason=fetch_failed ({type(e).__name__})]')
     return lines
 
-thread = api('GET', f'/api/v4/posts/{os.environ["ROOT_POST_ID"]}/thread')
+thread = read('/read/thread', {'root_post_id': os.environ['ROOT_POST_ID']})
 uids = sorted({p['user_id'] for p in thread['posts'].values() if p.get('user_id')})
-users = {u['id']: u for u in api('POST', '/api/v4/users/ids', uids)} if uids else {}
+users = {u['id']: u for u in read('/read/users-by-ids', {'user_ids': uids})} if uids else {}
 counter = [0]
 for pid in thread.get('order', []):
     p = thread['posts'][pid]
@@ -244,11 +259,14 @@ for pid in thread.get('order', []):
 PY
 ```
 
-**Note:** the root post is in `thread.posts` but has no `root_id`, so it prints without the `↳` indent — use that to distinguish the opening post from replies.
+**Note:** the root post is in `thread.posts` but has no `root_id`, so it
+prints without the `↳` indent — use that to distinguish the opening post
+from replies.
 
 Notes:
 - The response is not paginated — all replies are returned at once.
-- To get the post ID from a Mattermost URL: the last segment of the permalink is the post ID.
+- To get the post ID from a Mattermost URL: the last segment of the
+  permalink is the post ID.
 
 ## User Info
 
@@ -257,13 +275,12 @@ everything personal about them — email, first/last name, nickname,
 position (job title), locale, timezone, roles, and any custom profile
 props. If the owner asks any of these about themselves ("какая у меня
 почта", "какая моя должность", "какой у меня часовой пояс", "на какую
-почту отправить отчёт", etc.) — pull it from
-`GET /users/username/$ADMIN_USERNAME` and answer from the response.
-Same when you need to know any of these to perform a task (send an
-email on their behalf, schedule something in their timezone, phrase an
-address by position). **Don't ask the owner to provide what MM
-already knows.** Ask only when the profile genuinely does not have
-the field (e.g. a preference they never set in their MM profile).
+почту отправить отчёт", etc.) — pull it from `/read/user` with
+`{username: "$ADMIN_USERNAME"}` and answer from the response. Same when
+you need to know any of these to perform a task (send an email on their
+behalf, schedule something in their timezone, phrase an address by
+position). **Don't ask the owner to provide what MM already knows.** Ask
+only when the profile genuinely does not have the field.
 
 The profile's `.timezone` object (`automaticTimezone`,
 `manualTimezone`, `useAutomaticTimezone`) is the authoritative TZ —
@@ -275,8 +292,10 @@ addressing them — resolve via the API, don't paste raw user IDs.
 **By user ID:**
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/$USER_ID" \
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"user_id\":\"$USER_ID\"}" \
+  "$ORCHESTRATOR_URL/read/user" \
   | python3 -c "
 import json, sys
 u = json.load(sys.stdin)
@@ -292,8 +311,10 @@ print(f'Locale   : {u.get(\"locale\",\"\")}')
 **By username** (without `@`):
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/username/$USERNAME" \
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"$USERNAME\"}" \
+  "$ORCHESTRATOR_URL/read/user" \
   | python3 -c "
 import json, sys
 u = json.load(sys.stdin)
@@ -308,8 +329,10 @@ print(f'Roles    : {u.get(\"roles\",\"\")}')
 ## User Online Status
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/users/$USER_ID/status" \
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"user_id\":\"$USER_ID\"}" \
+  "$ORCHESTRATOR_URL/read/user-status" \
   | python3 -c "
 import json, sys
 s = json.load(sys.stdin)
@@ -322,8 +345,10 @@ print(f'Status: {s[\"status\"]}')  # online / away / dnd / offline
 List all members of the current channel (paginated, 200 per page):
 
 ```bash
-curl -sf -H "Authorization: Bearer $MM_TOKEN" \
-  "$MM_URL/api/v4/channels/$CHANNEL_ID/members?per_page=200" \
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"channel_id\":\"$CHANNEL_ID\",\"per_page\":200}" \
+  "$ORCHESTRATOR_URL/read/channel-members" \
   | python3 -c "
 import json, sys
 members = json.load(sys.stdin)
@@ -332,10 +357,21 @@ for m in members:
 "
 ```
 
-To get display names for all members, look up each `user_id` with the user-by-ID command above.
+To get display names for all members, look up each `user_id` with the
+user-by-ID command above, or batch-resolve via `/read/users-by-ids`:
+
+```bash
+USER_IDS_JSON='["uid1","uid2","uid3"]'
+curl -sf -X POST -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"user_ids\":$USER_IDS_JSON}" \
+  "$ORCHESTRATOR_URL/read/users-by-ids"
+```
 
 ## Access Control
 
-- Channel history and member list: available to **all users** (the bot is already a member of the channel).
-- User email and full profile: show only to **admins** (per TOOLS.md rules).
+- Channel history and member list: available to **all users** (the bot is
+  already a member of the channel).
+- User email and full profile: show only to **admins** (per TOOLS.md
+  rules).
 - Never expose one user's private data to another user.
