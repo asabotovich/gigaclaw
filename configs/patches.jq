@@ -212,6 +212,10 @@
 | .channels.orchestrator.enabled          = true
 | .channels.orchestrator.pushUrl          = env.ORCHESTRATOR_URL
 | .channels.orchestrator.pushSecret       = env.ORCHESTRATOR_PUSH_SECRET
+# accountId is the per-container key the orchestrator's poll endpoint uses
+# to look up this user's inbound queue. Pinned to ADMIN_USERNAME so each
+# container drains exactly its owner's events.
+| .channels.orchestrator.accountId        = env.ADMIN_USERNAME
 
 | .skills.entries.atlassian.enabled = true
 | .skills.entries.glab.enabled      = true
