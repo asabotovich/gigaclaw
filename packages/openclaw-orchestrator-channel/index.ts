@@ -5,7 +5,7 @@ import { openrouterDirectMediaUnderstandingProvider } from "./src/image-provider
 export default defineChannelPluginEntry({
     id: "orchestrator",
     name: "GigaClaw Orchestrator",
-    description: "Outbound bridge to the gigaclaw-orchestrator /push endpoint.",
+    description: "Bidirectional bridge to the gigaclaw-orchestrator: gateway long-polls inbound events, outbound goes via /push.",
     plugin: orchestratorPlugin,
     // Workaround for openclaw issue #8096: built-in openrouter image path
     // returns "Image model returned no text" even when the model itself works.

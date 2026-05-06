@@ -2,10 +2,14 @@ import { createChatChannelPlugin } from "openclaw/plugin-sdk/channel-core"
 import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core"
 import { emptyChannelConfigSchema } from "openclaw/plugin-sdk/core"
 import type { ChannelOutboundSessionRoute } from "openclaw/plugin-sdk/core"
+import { orchestratorGatewayAdapter } from "./gateway.js"
 import { parseTarget } from "./target.js"
 import { pushMessage } from "./push.js"
 
 export interface ResolvedAccount {
+    /** Stable identifier used by the orchestrator's poll endpoint to look up
+     *  this container's inbound queue. Pinned to channels.orchestrator.accountId
+     *  in the config (provision sets it to the container owner's MM username). */
     accountId: string | null
     pushUrl: string
     pushSecret: string
@@ -15,6 +19,7 @@ interface OrchestratorChannelConfig {
     enabled?: boolean
     pushUrl?: string
     pushSecret?: string
+    accountId?: string
 }
 
 function readSection(cfg: OpenClawConfig): OrchestratorChannelConfig {
@@ -23,20 +28,17 @@ function readSection(cfg: OpenClawConfig): OrchestratorChannelConfig {
     return section
 }
 
-function resolveAccount(cfg: OpenClawConfig, accountId?: string | null): ResolvedAccount {
+function resolveAccount(cfg: OpenClawConfig, _accountId?: string | null): ResolvedAccount {
     const section = readSection(cfg)
     const pushUrl = typeof section.pushUrl === "string" ? section.pushUrl.replace(/\/+$/, "") : ""
     const pushSecret = typeof section.pushSecret === "string" ? section.pushSecret : ""
-    if (!pushUrl || !pushSecret) {
+    const accountId = typeof section.accountId === "string" && section.accountId ? section.accountId : null
+    if (!pushUrl || !pushSecret || !accountId) {
         throw new Error(
-            "orchestrator channel: channels.orchestrator.pushUrl and channels.orchestrator.pushSecret are required",
+            "orchestrator channel: channels.orchestrator.pushUrl, pushSecret and accountId are required",
         )
     }
-    return {
-        accountId: accountId ?? null,
-        pushUrl,
-        pushSecret,
-    }
+    return { accountId, pushUrl, pushSecret }
 }
 
 function inspectAccount(cfg: OpenClawConfig) {
@@ -80,6 +82,7 @@ export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
             chatTypes: ["direct", "channel", "group", "thread"],
         },
         reload: { configPrefixes: ["channels.orchestrator"] },
+        gateway: orchestratorGatewayAdapter,
         // Control UI looks up configSchema to build a settings form. Without
         // one it renders "Unsupported type: . Use Raw mode." in the Channels
         // panel. Our three fields (enabled / pushUrl / pushSecret) are driven
@@ -88,7 +91,14 @@ export const orchestratorPlugin = createChatChannelPlugin<ResolvedAccount>({
         // suppress the error.
         configSchema: emptyChannelConfigSchema(),
         config: {
-            listAccountIds: () => [],
+            listAccountIds: (cfg: OpenClawConfig) => {
+                const section = readSection(cfg)
+                return section.accountId ? [section.accountId] : []
+            },
+            defaultAccountId: (cfg: OpenClawConfig) => {
+                const section = readSection(cfg)
+                return section.accountId ?? ""
+            },
             resolveAccount,
             inspectAccount,
         },
