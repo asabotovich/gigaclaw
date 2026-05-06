@@ -58,10 +58,10 @@ export async function handleOrchestratorInbound(params: {
 }): Promise<void> {
     const { cfg, account, channelRuntime: runtime, event } = params
     const route = { agentId: event.agentId, sessionKey: event.sessionKey }
-    const peer = {
-        kind: event.chatType === "direct" ? ("direct" as const) : ("channel" as const),
-        id: event.target,
-    }
+    // From is a target-string identifying the sender — SDK calls .trim() on
+    // it during command-detection, so it must be a string, not a peer object.
+    // Mirror qa-channel: build a DM-target from the sender's id.
+    const fromTarget = `mattermost:direct:${event.message.senderId}`
 
     const sessionStore = (cfg as { session?: { store?: string } }).session?.store
     const storePath = runtime.session.resolveStorePath(sessionStore, { agentId: route.agentId })
@@ -84,7 +84,7 @@ export async function handleOrchestratorInbound(params: {
         BodyForAgent: event.message.text,
         RawBody: event.message.text,
         CommandBody: event.message.text,
-        From: peer,
+        From: fromTarget,
         To: event.target,
         SessionKey: route.sessionKey,
         AccountId: account.accountId ?? undefined,
