@@ -72,9 +72,9 @@ call, so output never contains raw IDs. Attachments are downloaded under
 each post as described above:
 
 ```bash
-CHANNEL_ID="<paste id without #>"
-PER_PAGE=30
 python3 <<'PY'
+CHANNEL_ID = "<paste id without #>"
+PER_PAGE = 30
 import os, json, re, urllib.request, datetime
 ORCH = os.environ['ORCHESTRATOR_URL']
 AUTH = f"Bearer {os.environ['ORCHESTRATOR_PUSH_SECRET']}"
@@ -145,8 +145,8 @@ def fetch_attachments(post, counter):
     return lines
 
 posts = read('/read/channel-history', {
-    'channel_id': os.environ['CHANNEL_ID'],
-    'per_page': int(os.environ['PER_PAGE']),
+    'channel_id': CHANNEL_ID,
+    'per_page': PER_PAGE,
 })
 uids = sorted({p['user_id'] for p in posts['posts'].values() if p.get('user_id')})
 users = {u['id']: u for u in read('/read/users-by-ids', {'user_ids': uids})} if uids else {}
@@ -172,8 +172,8 @@ The current thread's root post ID is available in the session context.
 Ask the user to paste the root post URL or ID if it is not clear.
 
 ```bash
-ROOT_POST_ID="<paste root post id here>"
 python3 <<'PY'
+ROOT_POST_ID = "<paste root post id here>"
 import os, json, re, urllib.request, datetime
 ORCH = os.environ['ORCHESTRATOR_URL']
 AUTH = f"Bearer {os.environ['ORCHESTRATOR_PUSH_SECRET']}"
@@ -243,7 +243,7 @@ def fetch_attachments(post, counter):
             lines.append(f'    [attachment skipped: id={fid} reason=fetch_failed ({type(e).__name__})]')
     return lines
 
-thread = read('/read/thread', {'root_post_id': os.environ['ROOT_POST_ID']})
+thread = read('/read/thread', {'root_post_id': ROOT_POST_ID})
 uids = sorted({p['user_id'] for p in thread['posts'].values() if p.get('user_id')})
 users = {u['id']: u for u in read('/read/users-by-ids', {'user_ids': uids})} if uids else {}
 counter = [0]
