@@ -9,11 +9,6 @@ metadata: {"clawdbot":{"emoji":"📧","requires":{"bins":["himalaya"]},"install"
 
 Himalaya is a CLI email client that lets you manage emails from the terminal using IMAP, SMTP, Notmuch, or Sendmail backends.
 
-## References
-
-- `references/configuration.md` (config file setup + IMAP/SMTP authentication)
-- `references/message-composition.md` (MML syntax for composing emails)
-
 ## Prerequisites
 
 1. Himalaya CLI installed (`himalaya --version` to verify)
@@ -113,10 +108,25 @@ Forward:
 himalaya message forward 42 -H "To:recipient@example.com" "Optional comment."
 ```
 
-New message:
+New message — pipe `template write` into `template send`:
 ```bash
-himalaya message send -H "To:recipient@example.com" -H "Subject:Hello" "Body."
+himalaya template write \
+    -H "To:recipient@example.com" \
+    -H "Subject:Hello" \
+    "Body." \
+  | himalaya template send
 ```
+
+`template write` fills `From:` from config, attaches your signature, and
+emits the draft to stdout. `template send` reads the draft from stdin,
+compiles it (MML → MIME, so non-ASCII subjects/bodies are encoded
+correctly), delivers via SMTP, and prints `Message successfully sent!`.
+
+**Don't use `himalaya message send -H ...` for a new message** — `send`
+has no `-H` flag (only `reply`/`forward` do), and its `[MESSAGE]...`
+positional argument takes an already-built raw RFC822 string, which is
+easy to malform (line endings, header encoding for non-ASCII).
+The `template write | template send` pipe avoids both traps.
 
 #### Confirming the message was actually sent
 
@@ -247,5 +257,5 @@ RUST_LOG=trace RUST_BACKTRACE=1 himalaya envelope list
 
 - Use `himalaya --help` or `himalaya <command> --help` for detailed usage.
 - Message IDs are relative to the current folder; re-list after folder changes.
-- For composing rich emails with attachments, use MML syntax (see `references/message-composition.md`).
+- For composing rich emails with attachments, use MML syntax (upstream docs: <https://crates.io/crates/mml-lib>).
 - Store passwords securely using `pass`, system keyring, or a command that outputs the password.
