@@ -7,20 +7,15 @@ description: Interact with GitLab using the `glab` CLI. Use when Claude needs to
 
 Use the `glab` CLI to interact with GitLab. Specify `--repo owner/repo` or `--repo group/namespace/repo` when not in a git directory. Also accepts full URLs.
 
-## Credentials (read this FIRST)
+> ⚠️ **Настройка / новый токен / ротация — иди в [SETUP.md](./SETUP.md).**
+> Этот файл — только про работу с уже подключённым GitLab.
+> `GITLAB_HOST` предустановлен Оркестратором, тебе его не настраивать
+> и не переспрашивать у пользователя.
 
-**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.glab.env.*`.
+## Boilerplate for every call
 
-**Always read credentials from the config at the start of each exec call** — do
-not rely on them being in `process.env`. OpenClaw's `env` injection only happens
-at gateway startup, so tokens saved mid-session require the read-each-call
-pattern below (or a container restart).
-
-Expected paths in `openclaw.json`:
-- `skills.entries.glab.env.GITLAB_HOST`
-- `skills.entries.glab.env.GITLAB_TOKEN` (PAT with `read_api`, `read_repository` scopes)
-
-### Boilerplate for every call
+Each `exec` tool call starts a fresh shell — re-read credentials from the
+config every time:
 
 ```bash
 CFG=/root/.openclaw/openclaw.json
@@ -30,26 +25,12 @@ export GITLAB_TOKEN=$(jq -r '.skills.entries.glab.env.GITLAB_TOKEN // empty' "$C
 glab mr list --repo group/project
 ```
 
-Each `exec` tool call starts a fresh shell → fresh env from config → always uses current token. **No gateway restart needed.**
+Fresh env from config → always uses current token. **No gateway restart needed.**
 
-### If a token is missing
-
-Ask the user for a GitLab PAT (scopes: `read_api`, `read_repository`) and save:
-
-```bash
-openclaw config set skills.entries.glab.env.GITLAB_TOKEN "<token>"
-```
-
-After save — immediately re-read and re-export using the boilerplate above; the very next call works.
+If a call fails with auth error (401/403), the token is missing or expired —
+go to [SETUP.md](./SETUP.md) for rotation, don't invent steps.
 
 **Never echo the token back to the user.**
-
-## First-time setup / token rotation
-
-If `GITLAB_TOKEN` is missing from the config, or the user is rotating it,
-follow the detailed walkthrough in [SETUP.md](./SETUP.md). It covers PAT
-creation, scope choice, sanity checks, and common failure modes. Don't
-invent steps here — delegate to `SETUP.md`.
 
 ## Merge Requests
 

@@ -8,30 +8,15 @@ license: Complete terms in LICENSE
 
 Python utilities for Jira and Confluence Data Center.
 
-## Credentials (read this FIRST)
+> ⚠️ **Настройка / новый токен / ротация — иди в [SETUP.md](./SETUP.md).**
+> Этот файл — только про работу с уже подключённым сервисом.
+> URL и SSL-флаги предустановлены Оркестратором, тебе их не настраивать
+> и не переспрашивать у пользователя.
 
-**BEFORE asking the user for anything related to Atlassian setup, FIRST run:**
+## Calling the skill
 
-```bash
-jq '.skills.entries.atlassian.env' /root/.openclaw/openclaw.json
-```
-
-This shows what's already configured. The Orchestrator pre-populates URLs and
-SSL flags from the host `.env` — **do not re-ask URLs from the user**.
-
-Only the **tokens** are user-provided (missing on a fresh container). If the
-user supplies a token, you already know the URL from the config — just save
-the token and proceed. Do NOT ask "what's the URL?" unless the corresponding
-field is genuinely absent from `openclaw.json`.
-
-**Single source of truth: `/root/.openclaw/openclaw.json`** under `skills.entries.atlassian.env.*` — credentials live here, nowhere else.
-
-You don't need to export anything. The skill auto-syncs `os.environ` from
-this config block on every `import scripts.*` (see `scripts/__init__.py`),
-so a fresh shell spawned by your next `exec` call always sees the current
-token without any gateway restart.
-
-### Calling the skill
+Tokens autoload from `/root/.openclaw/openclaw.json` on every `import scripts.*`
+(see `scripts/__init__.py`). Just call:
 
 ```bash
 cd /root/.openclaw/workspace/skills/atlassian && python3 -c "
@@ -40,10 +25,15 @@ print(jira_search(jql='project = VIBE'))
 "
 ```
 
-That's it — no `export`, no `jq`, no env shuffling. The wrappers read
-config-backed env via `os.getenv` internally.
+No `export`, no `jq`, no env shuffling. After a token is saved (via the
+SETUP.md flow), the next call sees it without a gateway restart.
 
-### Discovering the API
+If a call fails with auth error (401/403), the token is missing or expired —
+go to [SETUP.md](./SETUP.md) for rotation, don't invent steps.
+
+**Never echo tokens back to the user, even partially.**
+
+## Discovering the API
 
 If you're not sure a function exists or what it accepts, list everything:
 
@@ -55,23 +45,6 @@ Output is generated from the source — never stale, never wrong.
 Prefer it over guessing names from memory: e.g. there is no
 `confluence_get_page_by_id`; the actual call is
 `confluence_get_page(page_id=...)`. The list will show this directly.
-
-### If a token is missing
-
-Save it (the autoload picks it up on the next call):
-
-```bash
-openclaw config set skills.entries.atlassian.env.JIRA_PAT_TOKEN "<token>"
-```
-
-**Never echo tokens back to the user, even partially.**
-
-## First-time setup / token rotation
-
-If the required tokens are missing from the config, or the user is rotating a
-token, follow the detailed walkthrough in [SETUP.md](./SETUP.md). It covers
-PAT creation URLs, scope requirements, sanity checks, and common failure
-modes. Don't invent steps here — delegate to `SETUP.md`.
 
 ## Configuration
 
