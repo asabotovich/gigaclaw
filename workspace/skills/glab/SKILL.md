@@ -9,8 +9,8 @@ Use the `glab` CLI to interact with GitLab. Specify `--repo owner/repo` or `--re
 
 > ⚠️ **Настройка / новый токен / ротация — иди в [SETUP.md](./SETUP.md).**
 > Этот файл — только про работу с уже подключённым GitLab.
-> `GITLAB_HOST` предустановлен Оркестратором, тебе его не настраивать
-> и не переспрашивать у пользователя.
+> `GITLAB_HOST` уже в `openclaw.json` — тебе его не настраивать и не
+> переспрашивать у пользователя.
 
 ## Boilerplate for every call
 
