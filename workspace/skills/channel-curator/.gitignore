@@ -1,5 +1,0 @@
-# Runtime state lives under ~/.openclaw/workspace/skills/channel-curator/,
-# not in the git source. These entries are a safety net in case anything
-# is created here by mistake.
-projects/
-index.md
