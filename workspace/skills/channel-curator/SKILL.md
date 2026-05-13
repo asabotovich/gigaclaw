@@ -103,10 +103,21 @@ mkdir -p "$CURATOR_DIR/projects"
 
 При подключении ты добавляешь **одну строку** в
 `~/.openclaw/workspace/MEMORY.md` (она всегда в твоём контексте, в
-любой сессии):
+любой сессии). **Делай это через append (`>>`), не через `edit`** —
+шапка MEMORY.md меняется между провижнами, и `edit` будет ломаться на
+точном матче:
 
+```bash
+printf '\n- channel-curator: курирую `%s` (%s) как `%s` — состояние в `~/.openclaw/workspace/skills/channel-curator/projects/%s.md`\n' \
+  "$CHANNEL_LABEL" "$CHANNEL_ID" "$SLUG" "$SLUG" \
+  >> ~/.openclaw/workspace/MEMORY.md
 ```
-- channel-curator: курирую `<channel_label>` (`<channel_id>`) как `<slug>` — состояние в `~/.openclaw/workspace/skills/channel-curator/projects/<slug>.md`
+
+Перед добавлением проверь что строки про этот `<slug>` ещё нет (на
+случай повторной активации):
+
+```bash
+grep -q "как \`${SLUG}\` —" ~/.openclaw/workspace/MEMORY.md || printf '...' >> ...
 ```
 
 Одна строка важна — при отключении (Сценарий C) её удалит `sed`
@@ -236,7 +247,16 @@ curl -sf -X POST \
   продолжит с того же oldest-id.
 - Для `last_30d`: останавливайся когда oldest_post.create_at < now − 30 дней.
 - Для каждого корневого поста с `reply_count > 0` забери тред целиком
-  через `/read/thread`.
+  через `/read/thread`. Параметр — `root_post_id` (JSON body, не
+  query-string):
+
+  ```bash
+  curl -sf -X POST \
+    -H "Authorization: Bearer $ORCHESTRATOR_PUSH_SECRET" \
+    -H "Content-Type: application/json" \
+    -d "{\"root_post_id\":\"$ROOT_POST_ID\"}" \
+    "$ORCHESTRATOR_URL/read/thread"
+  ```
 
 Для `active_threads_only`: возьми первую страницу → root-посты, у
 которых **последний reply** за последние N дней → каждый их тред
@@ -277,36 +297,19 @@ thinking-блок), выдели:
 3. В `~/.openclaw/workspace/MEMORY.md` добавь одну строку (см. секцию
    «Где твоя память»).
 
-### A.7 Поздоровайся
-
-Один root-пост в канал (не в тред):
-
-```
-Взял `<slug>` под кураторство.
-Прочитал N постов за период T (стратегия: <strategy>).
-Вижу: K тредов, M задач, L вопросов, R рисков.
-Буду заходить каждый час с 9 до 18 МСК, помогать закрывать треды.
-Предложения write-действий шлю прямо в тред; подтверждение `yes`/`no` принимаю только от тебя.
-<если есть вопросы>Уточни:
-- <вопрос 1>
-```
-
-### A.8 Поставь cron
+### A.7 Поставь cron
 
 **Без `--announce`** — финальный ответ assistant'а никуда не уходит
 автоматически. Если бот ничего не сделал — не пишет ничего, ни в DM,
 ни в канал. Если что-то сделал — отправляет явными `openclaw message`
 в нужные места (треды, DM).
 
+Запускай команду **в одну строку** — multi-line с `\` иногда падает на
+квотинге. Так надёжнее:
+
 ```bash
 SLUG="my-project"
-
-JOB=$(openclaw cron add \
-  --name "curator-${SLUG}" \
-  --cron "0 9-18 * * *" --tz "Europe/Moscow" \
-  --session isolated \
-  --message "Чек проекта ${SLUG}. Прочитай ~/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.md и действуй по Сценарию B.")
-
+JOB=$(openclaw cron add --name "curator-${SLUG}" --cron "0 9-18 * * *" --tz "Europe/Moscow" --session isolated --message "Чек проекта ${SLUG}. Прочитай ~/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.md и действуй по Сценарию B.")
 JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['jobId'])")
 ```
 
@@ -316,7 +319,7 @@ JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.s
 - В тред канала: `openclaw message --channel orchestrator --to "mattermost:channel:<id>:thread:<root_post_id>" -m "<text>"`
 - В DM владельцу: `openclaw message --channel orchestrator --to "mattermost:direct:$ADMIN_USER_ID" -m "<text>"`
 
-Корень канала бот не трогает после A.7 приветствия.
+Корень канала бот не трогает вообще. Никаких посланий «взял проект», «отчитываюсь» и т.п. в `mattermost:channel:<id>` без `:thread:`. Финальный ответ assistant'а при подключении уходит в тред владельца естественно (там где он тебя позвал) — этого достаточно.
 
 ---
 
@@ -380,7 +383,7 @@ JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.s
 | Форма Next step | Действие |
 |---|---|
 | «дождаться X от @user», `(now − last_activity) > 2d`, сегодня ещё не пинговал | Пост в тред: «@user, есть апдейт?». Обнови `Last pinged by curator: <today>`. **Один пинг/тред/сутки.** |
-| Тот же тип, но прошло ≥5 дней с первого твоего пинга | Пост в тред с упоминанием владельца: «@<admin_username>, тред висит — @user молчит >5 дней. Эскалировать?» |
+| Тот же тип, но прошло суток с первого твоего пинга | Пост в тред с упоминанием владельца: «@<admin_username>, тред висит — @user молчит >5 дней. Эскалировать?» |
 | «нужно решение про X», висит >7 дней | Пост в тред: «@<admin_username>, висит решение про X, нужен твой ответ» |
 | «завести тикет VIBE» | Пост в тред: «Нашёл задачу: «<summary>». Завести VIBE? Owner @user, deadline <date>. Ответь `yes`/`no` или поправь summary.» Когда увидишь reply от владельца с `yes` (проверяй `user_id == $ADMIN_USER_ID`) → `jira_create_issue`, ответом в тред — ссылка на тикет. Также добавь в `## Tasks`. |
 | «закрыть VIBE-XXX» / «перевести в Done» (договорились в чате, в Jira ещё Open) | Пост в тред: «По чату это уже сделано. Перевести VIBE-XXX в Done? `yes`/`no`.» После `yes` от владельца → `jira_transition_issue` → ответ в тред. |
