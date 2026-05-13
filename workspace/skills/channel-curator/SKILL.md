@@ -299,21 +299,14 @@ thinking-блок), выдели:
 
 ### A.7 Поставь cron
 
-**Без `--announce`** — финальный ответ assistant'а никуда не уходит
-автоматически. Если бот ничего не сделал — не пишет ничего, ни в DM,
-ни в канал. Если что-то сделал — отправляет явными `openclaw message`
-в нужные места (треды, DM).
-
-Запускай команду **в одну строку** — multi-line с `\` иногда падает на
-квотинге. Так надёжнее:
+Используй готовый скрипт — он идемпотентен (если cron уже есть, вернёт
+существующий id, новый не создаст):
 
 ```bash
-SLUG="my-project"
-JOB=$(openclaw cron add --name "curator-${SLUG}" --cron "0 9-18 * * *" --tz "Europe/Moscow" --session isolated --message "Чек проекта ${SLUG}. Прочитай ~/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.md и действуй по Сценарию B.")
-JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['jobId'])")
+JOB_ID=$(python3 ~/.openclaw/workspace/skills/channel-curator/scripts/ensure_cron.py --slug "<slug>")
 ```
 
-Запиши `JOB_ID` в frontmatter поле `cron_id`.
+Запиши `JOB_ID` в frontmatter поле `cron_id` файла проекта.
 
 Все сообщения бот отправляет **явно**:
 - В тред канала: `openclaw message --channel orchestrator --to "mattermost:channel:<id>:thread:<root_post_id>" -m "<text>"`
@@ -469,8 +462,7 @@ GitLab); но если есть конкретный концевой сигна
 
 ## Сценарий C — Отключение
 
-Когда владелец говорит «хватит / останови / отключи кураторство», или
-автоматически после 3 подряд неудачных тиков:
+Когда владелец говорит «хватит / останови / отключи кураторство»:
 
 ```bash
 SLUG="my-project"
@@ -478,9 +470,8 @@ PROJECT_FILE="$HOME/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.
 INDEX="$HOME/.openclaw/workspace/skills/channel-curator/index.md"
 MEMORY="$HOME/.openclaw/workspace/MEMORY.md"
 
-# Сними cron
-JOB_ID=$(grep -E '^cron_id:' "$PROJECT_FILE" | awk '{print $2}')
-[ -n "$JOB_ID" ] && openclaw cron rm "$JOB_ID" 2>/dev/null || true
+# Сними cron (удаляет все cron-задачи с именем curator-<slug>, если их больше одной)
+python3 ~/.openclaw/workspace/skills/channel-curator/scripts/remove_cron.py --slug "$SLUG"
 
 # Пометь неактивным
 sed -i 's/^curator_active: true$/curator_active: false/' "$PROJECT_FILE"
