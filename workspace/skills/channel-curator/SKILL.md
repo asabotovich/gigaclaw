@@ -299,21 +299,42 @@ thinking-блок), выдели:
 
 ### A.7 Поставь cron
 
-**Без `--announce`** — финальный ответ assistant'а никуда не уходит
-автоматически. Если бот ничего не сделал — не пишет ничего, ни в DM,
-ни в канал. Если что-то сделал — отправляет явными `openclaw message`
-в нужные места (треды, DM).
+Важные нюансы (несколько проверено на практике):
 
-Запускай команду **в одну строку** — multi-line с `\` иногда падает на
-квотинге. Так надёжнее:
+- `--no-deliver` — **обязательно**. Без него `openclaw cron add` с
+  `--session isolated --message ...` дефолтом ставит `delivery.mode:
+  announce`, требует `--to`, и каждый тик падает с error «Delivering
+  to GigaClaw Orchestrator requires target ...». Нам не нужен
+  финальный automatic delivery — все сообщения бот шлёт сам через
+  `openclaw message` по ходу выполнения.
+- `--json` — гарантированный JSON-выход; без него парсинг ненадёжный.
+- Поле id в response называется **`id`**, не `jobId`.
+- Команду пиши **в одну строку** — multi-line с `\` иногда падает на
+  квотинге.
+- **Idempotency:** прежде чем создавать cron, проверь, нет ли уже
+  активной задачи с этим именем (иначе ретрай создаст дубль —
+  `openclaw cron add` не дедупит по `--name`).
 
 ```bash
 SLUG="my-project"
-JOB=$(openclaw cron add --name "curator-${SLUG}" --cron "0 9-18 * * *" --tz "Europe/Moscow" --session isolated --message "Чек проекта ${SLUG}. Прочитай ~/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.md и действуй по Сценарию B.")
-JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['jobId'])")
+
+# 1. Проверить — нет ли уже cron с этим именем
+EXISTING=$(openclaw cron list --json 2>/dev/null | python3 -c "import json,sys; data=json.load(sys.stdin); [print(j['id']) for j in data.get('jobs',[]) if j.get('name')=='curator-${SLUG}']" | head -1)
+
+if [ -n "$EXISTING" ]; then
+  JOB_ID="$EXISTING"
+  echo "cron уже есть: $JOB_ID"
+else
+  JOB=$(openclaw cron add --name "curator-${SLUG}" --cron "0 9-18 * * *" --tz "Europe/Moscow" --session isolated --no-deliver --json --message "Чек проекта ${SLUG}. Прочитай ~/.openclaw/workspace/skills/channel-curator/projects/${SLUG}.md и действуй по Сценарию B.")
+  JOB_ID=$(printf '%s' "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+fi
 ```
 
 Запиши `JOB_ID` в frontmatter поле `cron_id`.
+
+После старта cron финальный ответ assistant'а в каждом тике никуда
+автоматически не уходит — все нужные сообщения бот посылает сам через
+`openclaw message` (треды, DM). Если на тике сделать нечего — молчание.
 
 Все сообщения бот отправляет **явно**:
 - В тред канала: `openclaw message --channel orchestrator --to "mattermost:channel:<id>:thread:<root_post_id>" -m "<text>"`
